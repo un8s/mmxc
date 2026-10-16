@@ -1,0 +1,55 @@
+services:
+  mmxc:
+    image: mmxc:latest
+    build: .
+    container_name: mmxc
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Point the binary at the mounted config file.
+      MMXC_CONFIG: /app/mmxc.yaml
+      # Local-time rendering of dates; change to your timezone.
+      TZ: UTC
+      # Boot-time settings can be set here instead of (or overriding) the YAML.
+      # These are the only env-overridable settings; everything else (Ollama,
+      # backups, statement dir, UI behavior) is configured in the Settings page.
+      # MMXC_DB_PATH: data/yourfile.mmb
+      # MMXC_HTTP_ADDR: ":8080"
+      # (Write mode is not an env var: it follows the database file's own write
+      # bits. Make the file writable to allow edits, read-only to stay read-only.)
+      # Encrypted (.mmbx) database: prefer the _FILE form with the secret below,
+      # so the password stays out of `docker inspect` and off the disk it
+      # protects (/run/secrets is tmpfs). Without either, MMXC serves an unlock
+      # page at startup and asks for the password there.
+      # MMXC_DB_PASSWORD_FILE: /run/secrets/mmxc-db-password
+      # OIDC login gate (keep secrets out of the mounted config):
+      # MMXC_AUTH_ENABLED: "true"
+      # MMXC_OIDC_ISSUER: https://id.example.com
+      # MMXC_OIDC_CLIENT_ID: mmxc
+      # MMXC_OIDC_CLIENT_SECRET: change-me
+      # MMXC_OIDC_REDIRECT_URL: https://mmxc.example.com/auth/callback
+      # MMXC_SESSION_SECRET: change-me
+    volumes:
+      # Your config (copy mmxc.example.yaml -> mmxc.yaml first). Read-write: the
+      # Settings page saves changes to it. It must be owned by the container user.
+      - ./mmxc.yaml:/app/mmxc.yaml
+      # Runtime data: the .mmb database, backups, and statement archive.
+      # db_path / backup_dir / statement_dir in mmxc.yaml must resolve under here,
+      # e.g. db_path: data/yourfile.mmb
+      - ./data:/app/data
+    # Mount the database password as a secret (see MMXC_DB_PASSWORD_FILE above).
+    # secrets:
+    #   - mmxc-db-password
+    # The container runs as UID 1000. If ./data and mmxc.yaml are owned by another
+    # user, either chown them to 1000 or set this to the UID:GID that owns them.
+    # user: "1000:1000"
+    # To reach an LLM (e.g. Ollama) running on this host from Linux:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+# Keep the password file outside ./data, so it is never picked up by a backup or
+# a sync of the database folder.
+# secrets:
+#   mmxc-db-password:
+#     file: ./secrets/mmxc-db-password

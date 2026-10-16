@@ -1,0 +1,1522 @@
+[
+  {
+    "name": "single_payee_lookup_spending_summary",
+    "question": "How much did I spend on StreamBox?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StreamBox"},
+        "result": [
+          {"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {"payee": "StreamBox", "type": "Withdrawal"},
+      "absent": ["from", "to", "description_contains", "category"]
+    }
+  },
+  {
+    "name": "payee_frequency_needs_lookup",
+    "question": "How often did I buy at Greenleaf?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_payee",
+      "arguments": {"query": "Greenleaf"}
+    }
+  },
+  {
+    "name": "payee_frequency_summary_no_inferred_category",
+    "question": "How often did I buy at Greenleaf?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "Greenleaf"},
+        "result": [
+          {"id": 105, "name": "Greenleaf Grocers", "active": true, "category": "Living: Groceries"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "payee": "Greenleaf Grocers",
+        "type": "Withdrawal"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "payee_count_summary_uses_unbounded_summary",
+    "question": "How many StreamBox payments do I have?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StreamBox"},
+        "result": [
+          {"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "payee": "StreamBox",
+        "type": "Withdrawal"
+      },
+      "absent": ["category", "description_contains", "limit"]
+    }
+  },
+  {
+    "name": "ambiguous_category_needs_lookup",
+    "question": "When was the last home loan payment?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_category",
+      "arguments": {"query": "home loan"}
+    }
+  },
+  {
+    "name": "ambiguous_category_needs_clarification",
+    "question": "When was the last home loan payment?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "home loan"},
+        "result": [
+          {"id": 201, "name": "Shelter: Home Loan Alpha", "active": true},
+          {"id": 202, "name": "Shelter: Home Loan Beta", "active": true},
+          {"id": 203, "name": "Shelter: Home Loan River", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "ask_clarification",
+      "arguments": {
+        "question": "Which home loan category should I use?"
+      }
+    }
+  },
+  {
+    "name": "clarification_answer_latest_transaction",
+    "question": "When was the last home loan payment?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "home loan"},
+        "result": [
+          {"id": 201, "name": "Shelter: Home Loan Alpha", "active": true},
+          {"id": 202, "name": "Shelter: Home Loan Beta", "active": true},
+          {"id": 203, "name": "Shelter: Home Loan River", "active": true}
+        ]
+      },
+      {
+        "tool": "ask_clarification",
+        "arguments": {
+          "question": "Which home loan category should I use?",
+          "options": ["Shelter: Home Loan Alpha", "Shelter: Home Loan Beta", "Shelter: Home Loan River"]
+        },
+        "result": {
+          "question": "Which home loan category should I use?",
+          "options": ["Shelter: Home Loan Alpha", "Shelter: Home Loan Beta", "Shelter: Home Loan River"]
+        }
+      },
+      {"user": "clarification", "answer": "Shelter: Home Loan River"}
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "category": "Shelter: Home Loan River",
+        "type": "Withdrawal",
+        "sort": "date_desc",
+        "limit": 1
+      },
+      "absent": ["from", "to", "payee", "description_contains"]
+    }
+  },
+  {
+    "name": "latest_payee_transaction_open_date",
+    "question": "When was the last StreamBox payment?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StreamBox"},
+        "result": [
+          {"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "payee": "StreamBox",
+        "type": "Withdrawal",
+        "sort": "date_desc",
+        "limit": 1
+      },
+      "absent": ["from", "to", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "last_month_category_summary",
+    "question": "How much did I spend on groceries last month?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "groceries"},
+        "result": [
+          {"id": 301, "name": "Living: Groceries", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{last_month_start}}",
+        "to": "{{last_month_end}}",
+        "category": "Living: Groceries",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "this_month_payee_transactions",
+    "question": "Show me my FiberNet transactions this month.",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "FiberNet"},
+        "result": [
+          {"id": 102, "name": "FiberNet", "active": true, "category": "Home Services: Internet"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_month_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_month_end}}"]},
+        "payee": "FiberNet",
+        "type": "Withdrawal",
+        "sort": "date_desc"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "named_year_biggest_category_transactions",
+    "question": "What are my biggest cafe purchases in 2025?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "cafe"},
+        "result": [
+          {"id": 302, "name": "Meals: Cafes", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "2025-01-01",
+        "to": "2025-12-31",
+        "category": "Meals: Cafes",
+        "type": "Withdrawal",
+        "sort": "amount_desc"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "year_to_date_deposit_summary",
+    "question": "How much salary did I receive year to date?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "Blue Finch Payroll"},
+        "result": [
+          {"id": 103, "name": "Blue Finch Payroll", "active": true, "category": "Income: Salary"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "payee": "Blue Finch Payroll",
+        "type": "Deposit"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "partial_text_uses_description_contains",
+    "question": "Show transactions with warehouse in the notes.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "description_contains": "warehouse",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category"]
+    }
+  },
+  {
+    "name": "biggest_expenses_in_may",
+    "question": "What were my biggest expenses in May?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_year}}-05-01",
+        "to": "{{current_year}}-05-31",
+        "type": "Withdrawal",
+        "sort": "amount_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "payee_purchases_over_50_this_year",
+    "question": "Show RiverCart purchases over $50 this year.",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "RiverCart"},
+        "result": [
+          {"id": 104, "name": "RiverCart", "active": true, "category": "Shopping: Online"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "payee": "RiverCart",
+        "type": "Withdrawal",
+        "amount_min": 50,
+        "sort": "date_desc"
+      },
+      "absent": ["category", "description_contains"]
+    },
+    "any_of": [
+      {
+        "action": "tool",
+        "tool": "read_transactions",
+        "arguments": {
+          "from": "{{current_year_start}}",
+          "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+          "payee": "RiverCart",
+          "type": "Withdrawal",
+          "amount_min": 50,
+          "sort": "date_desc"
+        },
+        "absent": ["category", "description_contains"]
+      },
+      {
+        "action": "tool",
+        "tool": "read_transactions",
+        "arguments": {
+          "from": "{{current_year_start}}",
+          "to": "{{current_year_end}}",
+          "payee": "RiverCart",
+          "type": "Withdrawal",
+          "amount_min": 50,
+          "sort": "date_desc"
+        },
+        "absent": ["category", "description_contains"]
+      }
+    ]
+  },
+  {
+    "name": "compare_restaurants_needs_category_lookup",
+    "question": "Compare restaurants this month vs last month.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_category",
+      "arguments": {"query": "restaurants"}
+    }
+  },
+  {
+    "name": "compare_restaurants_with_category",
+    "question": "Compare restaurants this month vs last month.",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "restaurants"},
+        "result": [
+          {"id": 303, "name": "Meals: Restaurants", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "compare_summary",
+      "arguments": {
+        "period_a_label": "this month",
+        "period_a_from": "{{current_month_start}}",
+        "period_a_to": {"any_of": ["{{current_date}}", "{{current_month_end}}"]},
+        "period_b_label": "last month",
+        "period_b_from": "{{last_month_start}}",
+        "period_b_to": "{{last_month_end}}",
+        "category": "Meals: Restaurants",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "uncategorized_transactions",
+    "question": "Which transactions are uncategorized?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "uncategorized": true,
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "follow_up_transactions",
+    "question": "Show transactions marked Follow up.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "status": "Follow up",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "void_transactions_oldest_first",
+    "question": "List my void transactions oldest first.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "status": "Void",
+        "sort": "date_asc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "blank_status_transactions",
+    "question": "Show transactions with no status.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "status": "__blank",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "recent_transactions_limit_five",
+    "question": "Show my 5 most recent transactions.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "sort": "date_desc",
+        "limit": 5
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "top_three_biggest_expenses",
+    "question": "What are my top 3 biggest expenses?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "type": "Withdrawal",
+        "sort": "amount_desc",
+        "limit": 3
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "smallest_expenses_amount_ascending",
+    "question": "Show the smallest expenses in May.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_year}}-05-01",
+        "to": "{{current_year}}-05-31",
+        "type": "Withdrawal",
+        "sort": "amount_asc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "june_first_half_expenses",
+    "question": "How much did I spend from June 1 through June 15?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_year}}-06-01",
+        "to": "{{current_year}}-06-15",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "explicit_date_range_transactions",
+    "question": "Show transactions between May 5 and May 12, 2026.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "2026-05-05",
+        "to": "2026-05-12",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "previous_month_synonym_summary",
+    "question": "Total utilities spending for the previous month?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "utilities"},
+        "result": [
+          {"id": 304, "name": "Home Services: Utilities", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{last_month_start}}",
+        "to": "{{last_month_end}}",
+        "category": "Home Services: Utilities",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "current_month_so_far_synonym",
+    "question": "How much have I spent on restaurants so far this month?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "restaurants"},
+        "result": [
+          {"id": 303, "name": "Meals: Restaurants", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_month_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_month_end}}"]},
+        "category": "Meals: Restaurants",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "quarter_one_category_summary",
+    "question": "How much did I spend on insurance in Q1 2026?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "insurance"},
+        "result": [
+          {"id": 305, "name": "Protection: Insurance", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "2026-01-01",
+        "to": "2026-03-31",
+        "category": "Protection: Insurance",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "misspelled_payee_needs_lookup",
+    "question": "How much did I spend at StrimBox?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_payee",
+      "arguments": {"query": "StrimBox"}
+    }
+  },
+  {
+    "name": "misspelled_payee_lookup_result_summary",
+    "question": "How much did I spend at StrimBox?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StrimBox"},
+        "result": [
+          {"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "payee": "StreamBox",
+        "type": "Withdrawal"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "misspelled_category_needs_lookup",
+    "question": "How much did I spend on groseries last month?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_category",
+      "arguments": {"query": "groseries"}
+    }
+  },
+  {
+    "name": "misspelled_category_lookup_result_summary",
+    "question": "How much did I spend on groseries last month?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "groseries"},
+        "result": [
+          {"id": 301, "name": "Living: Groceries", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{last_month_start}}",
+        "to": "{{last_month_end}}",
+        "category": "Living: Groceries",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "ambiguous_payee_needs_clarification",
+    "question": "How much did I spend at Corner Shop?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "Corner Shop"},
+        "result": [
+          {"id": 105, "name": "Corner Shop Downtown", "active": true, "category": "Shopping: Local"},
+          {"id": 106, "name": "Corner Shop Uptown", "active": true, "category": "Shopping: Local"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "ask_clarification",
+      "arguments": {
+        "question": "Which Corner Shop payee should I use?"
+      }
+    }
+  },
+  {
+    "name": "payee_clarification_answer_summary",
+    "question": "How much did I spend at Corner Shop?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "Corner Shop"},
+        "result": [
+          {"id": 105, "name": "Corner Shop Downtown", "active": true, "category": "Shopping: Local"},
+          {"id": 106, "name": "Corner Shop Uptown", "active": true, "category": "Shopping: Local"}
+        ]
+      },
+      {
+        "tool": "ask_clarification",
+        "arguments": {
+          "question": "Which Corner Shop payee should I use?",
+          "options": ["Corner Shop Downtown", "Corner Shop Uptown"]
+        },
+        "result": {
+          "question": "Which Corner Shop payee should I use?",
+          "options": ["Corner Shop Downtown", "Corner Shop Uptown"]
+        }
+      },
+      {"user": "clarification", "answer": "Corner Shop Uptown"}
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "payee": "Corner Shop Uptown",
+        "type": "Withdrawal"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "payee_amount_max_filter",
+    "question": "Show RiverCart purchases under $25 this year.",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "RiverCart"},
+        "result": [
+          {"id": 104, "name": "RiverCart", "active": true, "category": "Shopping: Online"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "payee": "RiverCart",
+        "type": "Withdrawal",
+        "amount_max": 25,
+        "sort": "date_desc"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "amount_range_filter",
+    "question": "Show expenses between $20 and $75 in May.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_year}}-05-01",
+        "to": "{{current_year}}-05-31",
+        "type": "Withdrawal",
+        "amount_min": 20,
+        "amount_max": 75,
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "account_specific_recent_transactions",
+    "question": "Show the latest transactions in Rewards Card.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_account",
+      "arguments": {"query": "Rewards Card"}
+    }
+  },
+  {
+    "name": "account_specific_recent_transactions_with_lookup",
+    "question": "Show the latest transactions in Rewards Card.",
+    "transcript": [
+      {
+        "tool": "find_account",
+        "arguments": {"query": "Rewards Card"},
+        "result": [
+          {"id": 202, "name": "Rewards Card", "type": "Credit Card", "status": "Open", "currency": "TSD", "favorite": false, "balance": -321.09, "transaction_count": 18}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "account": "Rewards Card",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "account_type_needs_lookup",
+    "question": "Show the latest transactions in my chequing account.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_account",
+      "arguments": {"query": "chequing"}
+    }
+  },
+  {
+    "name": "account_type_lookup_result_transactions",
+    "question": "Show the latest transactions in my chequing account.",
+    "transcript": [
+      {
+        "tool": "find_account",
+        "arguments": {"query": "chequing"},
+        "result": [
+          {"id": 201, "name": "Primary Checking", "type": "Checking", "status": "Open", "currency": "TSD", "favorite": true, "balance": 1234.56, "transaction_count": 42}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "account": "Primary Checking",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "account_specific_summary",
+    "question": "How much did I spend from Primary Checking last month?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_account",
+      "arguments": {"query": "Primary Checking"}
+    }
+  },
+  {
+    "name": "account_specific_summary_with_lookup",
+    "question": "How much did I spend from Primary Checking last month?",
+    "transcript": [
+      {
+        "tool": "find_account",
+        "arguments": {"query": "Primary Checking"},
+        "result": [
+          {"id": 201, "name": "Primary Checking", "type": "Checking", "status": "Open", "currency": "TSD", "favorite": true, "balance": 1234.56, "transaction_count": 42}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{last_month_start}}",
+        "to": "{{last_month_end}}",
+        "account": "Primary Checking",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "transfer_transactions",
+    "question": "Show transfers this month.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_month_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_month_end}}"]},
+        "type": "Transfer",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category", "description_contains"]
+    }
+  },
+  {
+    "name": "refund_deposits",
+    "question": "How much did I receive in refund deposits this year?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "description_contains": "refund",
+        "type": "Deposit"
+      },
+      "absent": ["payee", "category"]
+    }
+  },
+  {
+    "name": "received_income_payee_lookup",
+    "question": "How much did Blue Finch Payroll send me in 2025?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_payee",
+      "arguments": {"query": "Blue Finch Payroll"}
+    }
+  },
+  {
+    "name": "received_income_payee_summary",
+    "question": "How much did Blue Finch Payroll send me in 2025?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "Blue Finch Payroll"},
+        "result": [
+          {"id": 103, "name": "Blue Finch Payroll", "active": true, "category": "Income: Salary"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "2025-01-01",
+        "to": "2025-12-31",
+        "payee": "Blue Finch Payroll",
+        "type": "Deposit"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "partial_reference_description_contains",
+    "question": "Find transactions mentioning invoice ZX-42.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "description_contains": "invoice ZX-42",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category"]
+    },
+    "any_of": [
+      {
+        "action": "tool",
+        "tool": "read_transactions",
+        "arguments": {
+          "description_contains": "invoice ZX-42",
+          "sort": "date_desc"
+        },
+        "absent": ["payee", "category"]
+      },
+      {
+        "action": "tool",
+        "tool": "read_transactions",
+        "arguments": {
+          "description_contains": "ZX-42",
+          "sort": "date_desc"
+        },
+        "absent": ["payee", "category"]
+      }
+    ]
+  },
+  {
+    "name": "free_text_description_contains_with_date_range",
+    "question": "Show memo matches for garden during May.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "read_transactions",
+      "arguments": {
+        "from": "{{current_year}}-05-01",
+        "to": "{{current_year}}-05-31",
+        "description_contains": "garden",
+        "sort": "date_desc"
+      },
+      "absent": ["payee", "category"]
+    }
+  },
+  {
+    "name": "compare_payee_this_year_last_year_lookup",
+    "question": "Compare StreamBox this year vs last year.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_payee",
+      "arguments": {"query": "StreamBox"}
+    }
+  },
+  {
+    "name": "compare_payee_this_year_last_year",
+    "question": "Compare StreamBox this year vs last year.",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StreamBox"},
+        "result": [
+          {"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "compare_summary",
+      "arguments": {
+        "period_a_label": "this year",
+        "period_a_from": "{{current_year_start}}",
+        "period_a_to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "period_b_label": "last year",
+        "period_b_from": "{{last_year_start}}",
+        "period_b_to": "{{last_year_end}}",
+        "payee": "StreamBox",
+        "type": "Withdrawal"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "compare_category_may_vs_april",
+    "question": "Compare grocery spending in May versus April.",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "grocery"},
+        "result": [
+          {"id": 301, "name": "Living: Groceries", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "compare_summary",
+      "arguments": {
+        "period_a_label": "May",
+        "period_a_from": "{{current_year}}-05-01",
+        "period_a_to": "{{current_year}}-05-31",
+        "period_b_label": "April",
+        "period_b_from": "{{current_year}}-04-01",
+        "period_b_to": "{{current_year}}-04-30",
+        "category": "Living: Groceries",
+        "type": "Withdrawal"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "multiple_payees_unsupported",
+    "question": "How much did I spend on StreamBox and FiberNet combined?",
+    "expected_failure": "The current tool contract cannot express a combined multi-payee summary; models often try to run both payees and sum them.",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StreamBox"},
+        "result": [
+          {"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}
+        ]
+      },
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "FiberNet"},
+        "result": [
+          {"id": 102, "name": "FiberNet", "active": true, "category": "Home Services: Internet"}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": ["Cannot answer"]
+    }
+  },
+  {
+    "name": "multiple_categories_unsupported",
+    "question": "How much did I spend on groceries and restaurants combined last month?",
+    "expected_failure": "The current tool contract cannot express a combined multi-category summary; models often try to run both categories and sum them.",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "groceries"},
+        "result": [
+          {"id": 301, "name": "Living: Groceries", "active": true}
+        ]
+      },
+      {
+        "tool": "find_category",
+        "arguments": {"query": "restaurants"},
+        "result": [
+          {"id": 303, "name": "Meals: Restaurants", "active": true}
+        ]
+      }
+    ],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": ["Cannot answer"]
+    }
+  },
+  {
+    "name": "budget_left_category_needs_lookup",
+    "question": "How much budget is left for groceries this year?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "find_category",
+      "arguments": {
+        "query": "groceries"
+      }
+    }
+  },
+  {
+    "name": "budget_left_category_status",
+    "question": "How much budget is left for groceries this year?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "groceries"
+        },
+        "result": [
+          {
+            "id": 301,
+            "name": "Living: Groceries",
+            "active": true
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "budget_status",
+      "arguments": {
+        "year": "{{current_year}}",
+        "category": "Living: Groceries"
+      }
+    }
+  },
+  {
+    "name": "over_budget_last_year_needs_lookup",
+    "question": "How much over budget was I last year for hobbies?",
+    "transcript": [],
+    "any_of": [
+      {
+        "action": "tool",
+        "tool": "find_category",
+        "arguments": {
+          "query": "hobbies"
+        }
+      },
+      {
+        "action": "tool",
+        "tool": "find_category",
+        "arguments": {
+          "query": "hobby"
+        }
+      }
+    ]
+  },
+  {
+    "name": "over_budget_last_year_status",
+    "question": "How much over budget was I last year for hobbies?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "hobbies"
+        },
+        "result": [
+          {
+            "id": 412,
+            "name": "Leisure: Hobbies",
+            "active": true
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "budget_status",
+      "arguments": {
+        "year": "{{last_year}}",
+        "category": "Leisure: Hobbies"
+      }
+    }
+  },
+  {
+    "name": "over_budget_categories_whole_budget",
+    "question": "Which categories am I over budget on this year?",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "budget_status",
+      "arguments": {
+        "year": "{{current_year}}"
+      },
+      "absent": [
+        "category"
+      ]
+    }
+  },
+  {
+    "name": "budget_on_track_category_status",
+    "question": "Am I on track with my groceries budget?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "groceries"
+        },
+        "result": [
+          {
+            "id": 301,
+            "name": "Living: Groceries",
+            "active": true
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "budget_status",
+      "arguments": {
+        "year": "{{current_year}}",
+        "category": "Living: Groceries"
+      }
+    }
+  },
+  {
+    "name": "budget_ambiguous_category_needs_clarification",
+    "question": "How much is left in my dining budget?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "dining"
+        },
+        "result": [
+          {
+            "id": 305,
+            "name": "Living: Dining Out",
+            "active": true
+          },
+          {
+            "id": 521,
+            "name": "Work: Dining Allowance",
+            "active": true
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "ask_clarification"
+    }
+  },
+  {
+    "name": "spending_question_without_budget_uses_summary",
+    "question": "How much did I spend on groceries this year?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "groceries"
+        },
+        "result": [
+          {
+            "id": 301,
+            "name": "Living: Groceries",
+            "active": true
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "category": "Living: Groceries",
+        "type": "Withdrawal"
+      }
+    }
+  },
+  {
+    "name": "budget_final_answer_remaining",
+    "question": "How much budget was left for groceries in 2025?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "groceries"
+        },
+        "result": [
+          {
+            "id": 301,
+            "name": "Living: Groceries",
+            "active": true
+          }
+        ]
+      },
+      {
+        "tool": "budget_status",
+        "arguments": {
+          "year": "2025",
+          "category": "Living: Groceries"
+        },
+        "result": {
+          "year": "2025",
+          "found": true,
+          "category": "Living: Groceries",
+          "expenses": {
+            "entries": 1,
+            "budget": 6000,
+            "budget_to_date": 6000,
+            "actual": 5640.5,
+            "remaining": 359.5,
+            "over_by": 0
+          },
+          "entry_count": 1,
+          "over_budget_count": 0,
+          "entries": [
+            {
+              "category": "Living: Groceries",
+              "kind": "expense",
+              "period": "Monthly",
+              "period_amount": 500.0,
+              "budget": 6000,
+              "budget_to_date": 6000,
+              "actual": 5640.5,
+              "remaining": 359.5,
+              "over_by": 0,
+              "used_percent": 94.0
+            }
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": [
+        "359.5"
+      ]
+    }
+  },
+  {
+    "name": "budget_final_answer_over_by",
+    "question": "How much over budget was I in 2025 for hobbies?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "hobbies"
+        },
+        "result": [
+          {
+            "id": 412,
+            "name": "Leisure: Hobbies",
+            "active": true
+          }
+        ]
+      },
+      {
+        "tool": "budget_status",
+        "arguments": {
+          "year": "2025",
+          "category": "Leisure: Hobbies"
+        },
+        "result": {
+          "year": "2025",
+          "found": true,
+          "category": "Leisure: Hobbies",
+          "expenses": {
+            "entries": 1,
+            "budget": 1200,
+            "budget_to_date": 1200,
+            "actual": 1385,
+            "remaining": -185,
+            "over_by": 185
+          },
+          "entry_count": 1,
+          "over_budget_count": 1,
+          "entries": [
+            {
+              "category": "Leisure: Hobbies",
+              "kind": "expense",
+              "period": "Monthly",
+              "period_amount": 100.0,
+              "budget": 1200,
+              "budget_to_date": 1200,
+              "actual": 1385,
+              "remaining": -185,
+              "over_by": 185,
+              "used_percent": 115.4
+            }
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": [
+        "185"
+      ]
+    }
+  },
+  {
+    "name": "budget_final_answer_missing_year",
+    "question": "How much budget is left for groceries in 2023?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "groceries"
+        },
+        "result": [
+          {
+            "id": 301,
+            "name": "Living: Groceries",
+            "active": true
+          }
+        ]
+      },
+      {
+        "tool": "budget_status",
+        "arguments": {
+          "year": "2023",
+          "category": "Living: Groceries"
+        },
+        "result": {
+          "year": "2023",
+          "found": false,
+          "available_years": [
+            "2025",
+            "2026"
+          ],
+          "category": "Living: Groceries",
+          "entry_count": 0,
+          "over_budget_count": 0,
+          "entries": [],
+          "note": "There is no budget for 2023."
+        }
+      }
+    ],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": [
+        "2023"
+      ]
+    }
+  },
+  {
+    "name": "budget_missing_year_does_not_fall_back",
+    "question": "How much budget is left for groceries in 2027?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {
+          "query": "groceries"
+        },
+        "result": [
+          {
+            "id": 301,
+            "name": "Living: Groceries",
+            "active": true
+          }
+        ]
+      },
+      {
+        "tool": "budget_status",
+        "arguments": {
+          "year": "2027",
+          "category": "Living: Groceries"
+        },
+        "result": {
+          "year": "2027",
+          "found": false,
+          "available_years": [
+            "2026",
+            "2025",
+            "2024"
+          ],
+          "category": "Living: Groceries",
+          "entry_count": 0,
+          "over_budget_count": 0,
+          "entries": [],
+          "note": "There is no budget for 2027."
+        }
+      }
+    ],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": [
+        "2027"
+      ]
+    }
+  },
+  {
+    "name": "nonsense_non_finance_question",
+    "question": "Write a bedtime story about the moon.",
+    "transcript": [],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": ["Cannot answer"]
+    }
+  },
+  {
+    "name": "unsupported_forecast_question",
+    "question": "Predict my restaurant spending next year.",
+    "transcript": [],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": ["Cannot answer"]
+    }
+  },
+  {
+    "name": "unsupported_write_request",
+    "question": "Create a new transaction for lunch yesterday.",
+    "transcript": [],
+    "expect": {
+      "action": "final",
+      "tool": "",
+      "answer_contains": ["Cannot answer"]
+    }
+  }
+]

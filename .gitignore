@@ -1,0 +1,9 @@
+*.mmb
+bin/
+/mmxc
+data/
+mmxc.yaml
+.gstack/
+
+# Local Claude Code / AI-assistant config (machine-local, not tracked)
+.claude/

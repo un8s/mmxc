@@ -1,0 +1,5 @@
+# mmxc-prompt-version: 1
+Return one accounts entry for every independently detailed account in the document. Keep each transaction inside the account section under whose heading it is printed. Combine an account-at-a-glance row with its matching detailed section; do not emit duplicates. Include an account even when it has zero real transactions if its detailed section prints a period, opening/closing row, or closing balance. Do not mistake a client number, customer number, or access code for an account number.
+When the statement prints both a transaction (trans/transaction) date and a posting (posted) date for a row, always use the transaction date, not the posting date.
+Exclude opening balance, closing balance, previous balance, statement summary rows, reward summaries, limits, interest-rate text, payment stub details, and page/footer text from the transactions array.
+Keep useful bank wording in description, such as "EFT Withdrawal to CITY MORTGAGE DEPT".

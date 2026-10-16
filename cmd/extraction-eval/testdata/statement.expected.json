@@ -1,0 +1,51 @@
+{
+  "account_name": "Everyday Chequing Account",
+  "account_number": "****4821",
+  "period_start": "2025-03-01",
+  "period_end": "2025-03-31",
+  "closing_date": "2025-03-31",
+  "closing_balance": 2354.10,
+  "has_closing": true,
+  "transactions": [
+    {
+      "date": "2025-03-03",
+      "type": "Withdrawal",
+      "amount": 84.20,
+      "description": "POS PURCHASE GREENLEAF GROCERS",
+      "payee": "Greenleaf Grocers",
+      "category": "Food: Groceries"
+    },
+    {
+      "date": "2025-03-07",
+      "type": "Deposit",
+      "amount": 2400.00,
+      "description": "PAYROLL DEPOSIT CONTOSO LTD",
+      "payee": "Contoso Ltd",
+      "category": "Income: Salary"
+    },
+    {
+      "date": "2025-03-12",
+      "type": "Withdrawal",
+      "amount": 1150.00,
+      "description": "EFT WITHDRAWAL TO BLUE PEAK MORTGAGE",
+      "payee": "Blue Peak Mortgage",
+      "category": "Housing: Mortgage"
+    },
+    {
+      "date": "2025-03-18",
+      "type": "Withdrawal",
+      "amount": 12.75,
+      "description": "POS PURCHASE FERN CAFE",
+      "payee": "Fern Cafe",
+      "category": "Food: Dining Out"
+    },
+    {
+      "date": "2025-03-25",
+      "type": "Deposit",
+      "amount": 1.05,
+      "description": "INTEREST PAID",
+      "payee": "Northwind Savings Bank",
+      "category": "Income: Interest"
+    }
+  ]
+}

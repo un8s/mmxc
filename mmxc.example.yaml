@@ -1,0 +1,183 @@
+# MMXC configuration.
+#
+# Copy this file to mmxc.yaml (the default path; override with -config or
+# MMXC_CONFIG) and uncomment what you want to change. Every value below shows
+# its built-in default, so an empty/absent file uses the defaults.
+#
+# Settings come from the built-in defaults overlaid with this file; keys not
+# present here keep their default.
+
+# --- Runtime paths & server ---
+# db_path: data                       # folder scanned once at startup for .mmb and encrypted
+#                                     #   .mmbx files. A specific file is also accepted; its
+#                                     #   parent folder is scanned and that file is selected.
+# selected_db: mmxc.mmb               # file name (not a path) of the database to open from
+#                                     #   that folder. Settings rewrites this whenever you
+#                                     #   switch or create a database, so the choice survives a
+#                                     #   restart; a db_path naming one file still wins, and an
+#                                     #   unknown name falls back to the first file in the folder.
+# http_addr: ":8080"                  # listen address
+# backup_dir: data/backups            # full-copy backups are written here before writes
+# backup_prune_enabled: true          # prune old MMXC-created backups after successful writes
+# backup_retention_days: 30           # keep all backups newer than this
+# backup_retention_min_count: 25      # always keep at least this many backups
+# statement_dir: data/statements      # uploaded statements for LLM import
+
+# --- Audit log ---
+# MMXC records the changes it makes. The record goes into its own SQLite
+# database under audit_dir -- deliberately NOT into the process log, which ends
+# up in journald or the container log driver: locations MMXC does not control,
+# that are never encrypted, and that are often readable by more accounts than
+# the database itself. Keeping it here also means an encrypted database
+# encrypts its audit log with it, through the same key and VFS.
+#
+# audit_dir is a directory of its own, not the scanned database folder, so the
+# audit database can never turn up in the Settings database picker.
+#
+# audit_log chooses how much is written down:
+#   off       nothing is recorded
+#   actions   the default: the action and the row ids it touched
+#             ("transaction delete id=421 account_id=12"). No payee names, no
+#             amounts, no account numbers, no file names, no sign-in identities.
+#   detailed  adds all of the above. Useful for reconstructing exactly what
+#             happened, but it writes your finances down in plain text -- so
+#             prefer it only on an encrypted database, and only when you need it.
+#
+# Deleting a transaction takes a full database backup first (see backup_dir),
+# so the deleted row is recoverable from that backup regardless of this setting.
+# audit_log: actions
+# audit_dir: data/audit               # holds <database>.audit.db (or .audit.mmbx when encrypted)
+# audit_retention_days: 365           # entries older than this are pruned at startup; 0 keeps everything
+
+# --- Safety ---
+# Write mode is derived from the selected .mmb file's filesystem permissions.
+# Make the file writable to enable edits; make it read-only to run MMXC read-only.
+
+# --- Encryption at rest ---
+# MMXC can keep a database encrypted on disk, which protects a stolen drive or a
+# copied backup. An encrypted database is named .mmbx and every page is
+# encrypted; a plain .mmb is never touched. Settings -> "Encrypt or Decrypt
+# Database" writes a converted *copy* in either direction, so you always have a
+# way back.
+#
+# IMPORTANT: this is MMXC's own encryption, not MMEX's .emb format. MMEX cannot
+# open a .mmbx at all — write a plain .mmb copy when you need MMEX. There is no
+# recovery if the password is lost.
+#
+# The password is deliberately NOT a setting in this file: storing it beside the
+# database it protects would defeat the purpose. MMXC asks for it on an unlock
+# page at startup and keeps it in memory only. For unattended restarts, supply
+# it from the environment instead:
+#   MMXC_DB_PASSWORD=...            # simple, but visible in `docker inspect`
+#   MMXC_DB_PASSWORD_FILE=/run/secrets/mmxc-db-password
+#
+# Prefer the _FILE form: it is the Docker/systemd secrets convention, and those
+# paths (/run/secrets, $CREDENTIALS_DIRECTORY) are tmpfs, so the password stays
+# in RAM instead of resting on the disk it is protecting. Only a trailing
+# newline is stripped from the file, so a password may contain spaces. When both
+# are set the file wins.
+#
+# Scope: the encryption covers the database file. Uploaded statements under
+# statement_dir and backups of a plain database stay as they are.
+
+# --- Behavior (navigation and entry rules; "Behavior" on the Settings page) ---
+# app_start_page: ask                  # start page for "/": ask, reports, or accounts
+# theme: default                       # CSS theme from data/themes: default, serious, greenback, or a custom file stem
+# theme_mode: system                   # system, light, or dark
+# allow_top_level_categories: false   # MMEX only ever attaches transactions to *sub*-categories, so
+#                                     #   resolving a bare top-level category name is rejected by
+#                                     #   default. Set true only if you knowingly want top-level use.
+# allow_transaction_delete: false     # transactions are normally only marked Void; set true to add
+#                                     #   "Delete transaction" to transaction-row menus, which removes
+#                                     #   the row for good (a backup is still taken first)
+# hide_inactive_items: true           # hide inactive categories/payees from navigation and new-use pickers
+# show_account_balance: true          # show each transaction's resulting balance on the Accounts page
+
+# --- LLM (statement import + assistant) ---
+# MMXC talks to any OpenAI-compatible chat-completions endpoint: Ollama,
+# OpenRouter, OpenAI, vLLM, LM Studio, llama.cpp. Statement import sends an
+# uploaded statement to the endpoint, which returns transaction candidates for
+# review. One model handles everything: PDFs and plain text are sent as text,
+# image uploads (png/jpg/webp) as images, so importing images needs a
+# multimodal model.
+#
+# llm_base_url must include the API path. For Ollama that is /v1 on the usual
+# port; MMXC appends /v1 for you if you paste a bare host.
+#   Ollama:     http://localhost:11434/v1
+#   OpenRouter: https://openrouter.ai/api/v1
+#   OpenAI:     https://api.openai.com/v1
+# llm_base_url: "http://localhost:11434/v1"
+# llm_api_key: ""                        # bearer token; Ollama ignores it, hosted providers require it
+# llm_model: "qwen3:30b"                 # Ask and statement import; multimodal if you import images
+# llm_timeout_seconds: 600               # per-request timeout; large statements on a slow box are slow
+# llm_reasoning_effort: "none"           # none | low | medium | high | max. Extraction wants JSON, not
+#                                        #   a reasoning chain, so "none" is the useful default.
+#
+# NOTE ON THE CONTEXT WINDOW. Unlike Ollama's native API, the OpenAI API has no
+# per-request context-size parameter: the window is set on the server, and an
+# over-long prompt is silently truncated rather than rejected. Ollama defaults
+# to 4096 tokens, which is not enough for a full statement plus the category
+# list, so start it with a larger window:
+#   OLLAMA_CONTEXT_LENGTH=32768 ollama serve
+# MMXC compares its own prompt-size estimate against the prompt_tokens the
+# server reports and fails loudly when it detects truncation.
+#
+# llm_resolve: true                      # after extraction, run a second LLM pass to resolve payees/
+#                                        #   categories the fuzzy matcher left uncertain
+# prompt_dir: data/prompts               # optional assistant.txt / statement.txt replacing the built-in
+#                                        #   Ask and statement-import guidance (docs/AI-prompts.md);
+#                                        #   a missing folder or file means the built-in text
+#
+# The next two are debug switches with no control in Settings — set them here
+# and restart when you need them.
+# log_llm: false                         # log the raw prompt and response for each LLM call (verbose;
+#                                        #   useful for debugging extraction quality)
+# assistant_query_details: false         # show the assistant's tool transcript/query details below answers
+
+# --- UI translation (AI-assisted i18n) ---
+# When translation_language is set to anything other than "en" (or empty),
+# MMXC translates every UI string on demand using translation_model on the
+# endpoint configured above, and caches the results as plain JSON files under
+# translation_dir. The first page load in a new language is slow (one LLM call
+# per unique string); subsequent loads are instant cache hits. Edit any JSON
+# file in translation_dir to correct a machine translation — the file is the
+# authoritative catalog.
+# translation_language: en               # ISO 639-1 code: en de fr es it pt nl ... (en = no translation)
+# translation_model: ""                  # model for translation, e.g. "gemma3:4b" or "translategemma:4b"
+#                                        #   leave empty to disable translation even when language != en
+# translation_dir: data/translations     # directory for per-language JSON cache files
+
+# --- Authentication (Pocket ID / OIDC login gate) ---
+# Optional SSO login gate. When auth_enabled is true, every page requires the
+# visitor to have signed in via an OIDC provider (built for Pocket ID, but any
+# standards-compliant provider works). There are no app-level user accounts:
+# WHICH users may sign in is controlled on the provider side by assigning users
+# or groups to this OIDC client.
+#
+# In Pocket ID: create a *confidential* OAuth2/OIDC client with the redirect URI
+# set to "<your-mmxc-url>/auth/callback" (must match oidc_redirect_url exactly),
+# scopes "openid profile email", and assign the allowed users/groups. Then copy
+# the issuer URL, client id, and client secret below.
+#
+# Trust note: the ID token is accepted because it is fetched over a direct
+# back-channel TLS POST to the token endpoint; its JWT signature is NOT verified
+# against JWKS (nonce/issuer/audience claims are still checked).
+# auth_enabled: false
+# oidc_issuer: "https://id.example.com"                  # discovery base; exposes /.well-known/openid-configuration
+# oidc_client_id: "mmxc"
+# oidc_client_secret: ""
+# oidc_redirect_url: "https://mmxc.example.com/auth/callback"
+# oidc_scopes: "openid profile email"
+# oidc_auth_url: ""                    # optional: set both *_url to skip discovery
+# oidc_token_url: ""
+# session_secret: ""                   # HMAC key for the session cookie (use >=32 random bytes,
+#                                      #   e.g. `openssl rand -base64 48`). Empty => a random key is
+#                                      #   generated at startup, so all sessions reset on restart.
+# session_ttl_hours: 24                # absolute session lifetime (not sliding): the local session
+#                                      #   cookie expires this long after sign-in regardless of
+#                                      #   activity. Re-auth is then a silent SSO redirect (no password
+#                                      #   prompt) as long as the provider session is still alive, so a
+#                                      #   short value here costs little. The real password-prompt gate
+#                                      #   lives on the OIDC provider, not in MMXC.
+# trust_forwarded_proto: false         # set true behind a TLS-terminating reverse proxy so the
+#                                      #   session cookie's Secure flag is set from X-Forwarded-Proto

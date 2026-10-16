@@ -1,0 +1,30 @@
+2026-10-16	Replace the remaining real place names in payee-matching tests and comments
+2026-10-16	Update release
+2026-10-16	Keep location hints and real payee names out of the public tree
+2026-10-16	Update release
+2026-10-16	Publish under a pinned anonymous identity; use the GitHub module path
+2026-10-16	Keep the busy overlay off the built-in prompt download
+2026-10-16	Give the audit log page full width and a Settings sidebar link
+2026-10-16	Answer read-only budget questions in Ask
+2026-10-15	Print a usable URL when http_addr names a host
+2026-10-15	Import OFX/QFX and QIF downloads without the model; plan CSV import
+2026-10-14	Use one multimodal model for all LLM work; settle undated statement years
+2026-10-14	Use invented bank names in tests and check samples against their goldens
+2026-10-14	Let users override the Ask and statement prompt guidance with text files
+2026-10-13	Split public and internal docs and justfiles; add a general container guide
+2026-10-13	Reload a translation cache file when it is edited outside MMXC
+2026-10-12	Build the image with Go 1.26 to match go.mod
+2026-10-12	Let the Review candidates form create new Parent: Sub categories
+2026-10-12	Add a Learned Mappings modal to Review
+2026-10-12	Reset a review candidate's category when its payee is changed
+2026-09-26	Update release
+2026-09-18	Keep the audit log in its own encrypted database
+2026-09-15	Delete the dead import-rule legacy fields
+2026-09-15	Remove the legacy config-key stripper
+2026-09-15	Drop the stale MMXC_WRITE_ENABLED from the docs
+2026-09-15	Read the database password from a secret file
+2026-09-15	Cover the unlock page's password check
+2026-09-15	Write encrypted or plain database copies from Settings
+2026-09-15	Encrypt databases at rest with a password unlock page
+2026-09-15	Swap modernc SQLite for the cgo-free ncruces driver
+2026-09-15	Let learned rules and payee history outrank model suggestions in Review

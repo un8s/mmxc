@@ -1,0 +1,16 @@
+NORTHWIND SAVINGS BANK
+Everyday Chequing Account
+Account Number: ****4821
+Statement Period: 2025-03-01 to 2025-03-31
+
+Date        Description                          Withdrawals   Deposits   Balance
+2025-03-01  Opening Balance                                               1,200.00
+2025-03-03  POS PURCHASE GREENLEAF GROCERS          84.20                 1,115.80
+2025-03-07  PAYROLL DEPOSIT CONTOSO LTD                          2,400.00  3,515.80
+2025-03-12  EFT WITHDRAWAL TO BLUE PEAK MORTGAGE   1,150.00               2,365.80
+2025-03-18  POS PURCHASE FERN CAFE                   12.75                 2,353.05
+2025-03-25  INTEREST PAID                                            1.05  2,354.10
+2025-03-31  Closing Balance                                               2,354.10
+
+Closing Date: 2025-03-31
+Closing Balance: 2,354.10

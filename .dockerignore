@@ -1,0 +1,21 @@
+# Keep the build context small and free of local/secret data.
+# NOTE: do NOT ignore assets/ — assets/version.txt and assets/history.txt are
+# committed and go:embed-ed at build time.
+
+.git/
+.gstack/
+.agents/
+.codex/
+.claude/
+
+bin/
+data/
+*.mmb
+
+# Local config carries a LAN Ollama URL / secrets; it's mounted at runtime.
+mmxc.yaml
+
+# Docs and dev-only files are not needed in the image.
+*.md
+docs/
+justfile

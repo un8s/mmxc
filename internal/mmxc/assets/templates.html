@@ -1,0 +1,2384 @@
+{{define "head"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.T .Title "page title"}} - MMXC</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <div class="brand">MMXC{{if .Info.Version}} <span class="version" data-version-open role="button" tabindex="0" title="{{.T "Version history"}}">{{.Info.Version}}</span>{{end}}</div>
+      {{/* Only problems earn a place in the header: a compatible database says
+           nothing here (Settings carries the full status), while an
+           incompatible one stays prominent on every page. */}}
+      <div class="meta">{{.Info.Path}}{{if not .Info.Compatible}} · <span class="drift" title="{{.T .Info.CompatibilityDetail "database compatibility detail"}}">{{.T .Info.Status "database compatibility status"}}</span>{{end}}</div>
+    </div>
+    <nav class="pills">
+      <a class="{{if eq .Active "accounts"}}active{{end}}" href="/accounts" title="{{.T "Browse accounts, balances, and their transactions" "nav tooltip"}}">{{.T "Accounts"}}</a>
+      <a class="{{if eq .Active "budgets"}}active{{end}}" href="/budgets" title="{{.T "Compare actual spending against the budget for a year" "nav tooltip"}}">{{.T "Budgets"}}</a>
+      <a class="{{if eq .Active "categories"}}active{{end}}" href="/categories" title="{{.T "Manage the category tree that classifies transactions" "nav tooltip"}}">{{.T "Categories"}}</a>
+      <a class="{{if eq .Active "payees"}}active{{end}}" href="/payees" title="{{.T "Manage payees and the category each one usually gets" "nav tooltip"}}">{{.T "Payees"}}</a>
+      <a class="{{if eq .Active "reports"}}active{{end}}" href="/reports" title="{{.T "Spending and income summaries across accounts and periods" "nav tooltip"}}">{{.T "Reports"}}</a>
+      {{if .Info.AssistantAvailable}}
+        <a class="featured {{if eq .Active "assistant"}}active{{end}}" href="/assistant" title="{{.T "Ask questions about your finances in plain language" "nav tooltip for the AI assistant"}}">{{.T "Ask" "action"}}</a>
+      {{else}}
+        <span class="nav-disabled" title="{{.T "Ask questions about your finances in plain language" "nav tooltip for the AI assistant"}} — {{.T .Info.AIDetail "AI runtime status detail"}}">{{.T "Ask" "action"}}</span>
+      {{end}}
+      <a class="featured {{if eq .Active "review"}}active{{end}}" href="/review" title="{{.T "Reconcile a month against statements and import what is missing" "nav tooltip for the monthly review workflow"}}">{{.T "Review" "monthly account reconciliation action"}}</a>
+      <a class="icon-only {{if eq .Active "settings"}}active{{end}}" href="/settings" title="{{.T "Settings"}}" aria-label="{{.T "Settings"}}">⚙</a>
+      {{if .Info.AuthEnabled}}<a class="icon-only" href="/auth/logout" title="{{.T "Sign out"}}" aria-label="{{.T "Sign out"}}">⎋</a>{{end}}
+    </nav>
+  </header>
+  {{/* Every overlay below is a native <dialog> opened with showModal(), so the
+       browser handles top-layer stacking, focus containment and restore, Escape,
+       and background inertness. The busy overlay is opened last on purpose: the
+       top layer paints in promotion order, so it always covers an open modal. */}}
+  <dialog class="global-busy" data-global-busy>
+    <div class="global-busy-box" role="status" aria-live="polite">
+      <span class="global-spinner" aria-hidden="true"></span>
+      <span data-global-busy-label>{{.T "Loading..." "page loading or translation in progress"}}</span>
+    </div>
+  </dialog>
+  {{/* Shared confirm/alert dialog. appConfirm/appAlert in app.js fill in the
+       message and button labels; the defaults here are server-translated so the
+       buttons follow the app language rather than the browser's. */}}
+  <dialog class="app-dialog" data-app-dialog aria-labelledby="app-dialog-message">
+    <form method="dialog" class="app-dialog-form">
+      <p class="app-dialog-message" id="app-dialog-message" data-app-dialog-message></p>
+      <div class="app-dialog-actions">
+        <button type="submit" value="cancel" data-app-dialog-cancel>{{.T "Cancel" "dismiss a confirmation dialog without acting"}}</button>
+        <button type="submit" value="ok" data-app-dialog-ok autofocus>{{.T "OK" "confirm and proceed with the action in a confirmation dialog"}}</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog class="modal-panel" data-version-modal data-dismiss-on-backdrop aria-labelledby="version-modal-title">
+    <div class="modal-head">
+      <h2 id="version-modal-title">{{.T "Version History"}}</h2>
+      <button type="button" data-version-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body">
+      <ul class="version-history">
+        {{range .Info.History}}
+          <li><span class="vh-date">{{.Date}}</span> <span class="vh-subject">{{.Subject}}</span></li>
+        {{else}}
+          <li class="empty">{{$.T "No version history available."}}</li>
+        {{end}}
+      </ul>
+    </div>
+  </dialog>
+  <script>
+  window.MMXC_T = {
+    "Enter a base URL before querying models.": "{{.T "Enter a base URL before querying models."}}",
+    "Querying models...": "{{.T "Querying models..."}}",
+    "Model query failed": "{{.T "Model query failed"}}",
+    "No models were returned by this endpoint.": "{{.T "No models were returned by this endpoint."}}",
+    "Loaded 1 model.": "{{.T "Loaded 1 model."}}",
+    "Loaded {n} models.": "{{.T "Loaded {n} models."}}",
+    "Asking...": "{{.T "Asking..." "AI assistant request in progress"}}",
+    "Processing statement...": "{{.T "Processing statement..." "bank statement import in progress"}}",
+    "Split total": "{{.T "Split total" "sum of split transaction line amounts"}}",
+    "transaction status is not MMEX-compatible": "{{.T "transaction status is not MMEX-compatible"}}",
+    "to account is required for transfers": "{{.T "to account is required for transfers"}}",
+    "from account is required for transfers": "{{.T "from account is required for transfers"}}",
+    "payee is required": "{{.T "payee is required"}}",
+    "Unknown payee; importing will create it": "{{.T "Unknown payee; importing will create it"}}",
+    "Unknown category; importing will create it": "{{.T "Unknown category; importing will create it"}}",
+    "category is required": "{{.T "category is required"}}",
+    "category \"{cat}\" was not found": "{{.T "category \"{cat}\" was not found" "validation message, {cat} is the category name"}}",
+    "Possible duplicate": "{{.T "Possible duplicate" "possible duplicate transaction"}}",
+    "split transactions require at least two split lines": "{{.T "split transactions require at least two split lines" "validation message for split transactions"}}",
+    "split line {n} category is required": "{{.T "split line {n} category is required" "validation message, {n} is the line number"}}",
+    "split line {n} category \"{cat}\" was not found": "{{.T "split line {n} category \"{cat}\" was not found" "validation message, {n} is the line number, {cat} is the category name"}}",
+    "split line {n} amount must be greater than zero": "{{.T "split line {n} amount must be greater than zero" "validation message, {n} is the line number"}}",
+    "split lines must sum to the amount": "{{.T "split lines must sum to the amount" "validation message: split transaction lines must equal the parent transaction amount"}}",
+    "No questions yet.": "{{.T "No questions yet."}}",
+    "Delete question": "{{.T "Delete question" "action"}}",
+    "Void this transaction?": "{{.T "Void this transaction?" "confirm dialog"}}",
+    "Void transaction": "{{.T "Void transaction" "affirmative button in a confirmation dialog; marks the transaction void (invalid) in the ledger. It sits next to that dialog's Cancel button, so it must not be translated to the same word as Cancel"}}",
+    "Permanently delete this transaction? This cannot be undone.": "{{.T "Permanently delete this transaction? This cannot be undone." "confirm dialog"}}",
+    "Delete transaction": "{{.T "Delete transaction" "affirmative button in a confirmation dialog; permanently removes the transaction from the ledger. It sits next to that dialog's Cancel button"}}",
+    "✓ Closing balance checks out.": "{{.T "✓ Closing balance checks out." "bank statement reconciliation success message"}}",
+    "✗ Closing balance mismatch.": "{{.T "✗ Closing balance mismatch." "bank statement reconciliation error message"}}",
+    "After importing the selected candidates, the account balance on %s will be %s, matching the statement closing balance.": "{{.T "After importing the selected candidates, the account balance on %s will be %s, matching the statement closing balance." "bank statement reconciliation message; first %s is a date, second %s is money"}}",
+    "The statement closing balance on %s expects %s, but importing the selected candidates projects %s (off by %s).": "{{.T "The statement closing balance on %s expects %s, but importing the selected candidates projects %s (off by %s)." "bank statement reconciliation message; first %s is a date and the other placeholders are money amounts"}}",
+    "Could not dismiss candidate. Please try again.": "{{.T "Could not dismiss candidate. Please try again."}}",
+    "No statement candidates remain.": "{{.T "No statement candidates remain."}}",
+    "Could not validate this import. Please try again.": "{{.T "Could not validate this import. Please try again." "shown when the server rejects a bank statement import but sends no explanation"}}",
+    "OK": "{{.T "OK" "button that dismisses an informational dialog"}}"
+  };
+  </script>
+  <script src="/static/app.js?v=20260915-1" defer></script>
+{{end}}
+
+{{define "accounts"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>{{.T "Accounts"}}</h2>
+      </div>
+      {{if .Info.WriteEnabled}}
+        <details class="mini-create">
+          <summary>{{.T "New Account"}}</summary>
+          <form method="post" action="/accounts/create">
+            <label>{{.T "Name"}} <input required name="name" autocomplete="off"></label>
+            <label>{{.T "Type"}}
+              <select name="type" required>
+                <option value="Checking">{{.T "Checking" "account type"}}</option>
+                <option value="Term">{{.T "Savings / Term" "account type"}}</option>
+                <option value="Cash">{{.T "Cash" "account type"}}</option>
+                <option value="Credit Card">{{.T "Credit Card" "account type"}}</option>
+                <option value="Loan">{{.T "Loan" "account type"}}</option>
+              </select>
+            </label>
+            <label>{{.T "Status"}}
+              <select name="status" required>
+                <option value="Open">{{.T "Open" "account status"}}</option>
+                <option value="Closed">{{.T "Closed" "account status"}}</option>
+              </select>
+            </label>
+            <label>{{.T "Currency"}}
+              <select name="currency_id" required>
+                {{range .Currencies}}<option value="{{.ID}}">{{.Symbol}} - {{.Name}}</option>{{end}}
+              </select>
+            </label>
+            <label>{{.T "Initial Balance"}} <input type="text" inputmode="decimal" data-amount name="initial" value="0" title="{{.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+            <label class="checkline"><input type="checkbox" name="favorite" value="true" checked> {{.T "Favorite"}}</label>
+            <button type="submit">{{.T "Save Account"}}</button>
+          </form>
+        </details>
+      {{end}}
+      <label class="sidebar-control">{{.T "Show accounts"}}
+        <select data-account-nav-filter>
+          <option value="favorites">{{.T "Favorites"}}</option>
+          <option value="open" selected>{{.T "Open" "account status"}}</option>
+          <option value="closed">{{.T "Closed" "account status"}}</option>
+          <option value="all">{{.T "All"}}</option>
+        </select>
+      </label>
+      {{range $typ := .AccountTypes}}
+        <div class="group-label" data-account-nav-group="{{$typ}}">{{$typ}}</div>
+        {{range $.Accounts}}
+          {{if eq .Type $typ}}
+            <a class="account-link {{if and $.Selected (eq $.Selected.ID .ID)}}selected{{end}}" href="/accounts?account_id={{.ID}}" data-account-nav-item data-account-type="{{.Type}}" data-account-status="{{.Status}}" data-account-favorite="{{if .Favorite}}true{{else}}false{{end}}">
+              <span>
+                <strong>{{.Name}}</strong>
+                <small>{{.Status}} · {{.TransactionN}} {{$.T "tx" "abbreviation for transactions"}}</small>
+              </span>
+              <b>{{money .Balance}}</b>
+            </a>
+          {{end}}
+        {{end}}
+      {{end}}
+    </aside>
+    <section class="content">
+      {{if .Selected}}
+        <div class="detail-head">
+          <div>
+            <h1>{{.Selected.Name}}</h1>
+            <p>{{.Selected.Type}} · {{.Selected.Status}} · {{.Selected.CurrencyCode}}</p>
+          </div>
+          <div class="numbers">
+            <span>{{.T "Initial" "initial account balance label"}} {{money .Selected.Initial}}</span>
+            <strong>{{money .Selected.Balance}}</strong>
+          </div>
+        </div>
+        {{if and .Info.WriteEnabled .Selected.Editable}}
+          <details class="entry-panel">
+            <summary>{{.T "Edit Account"}}</summary>
+            <form class="entry-grid" method="post" action="/accounts/update">
+              <input type="hidden" name="account_id" value="{{.Selected.ID}}">
+              <label>{{.T "Name"}} <input required name="name" value="{{.Selected.Name}}" autocomplete="off"></label>
+              <label>{{.T "Type"}}
+                <select name="type" required>
+                  <option value="Checking" {{if eq .Selected.Type "Checking"}}selected{{end}}>{{.T "Checking" "account type"}}</option>
+                  <option value="Term" {{if eq .Selected.Type "Term"}}selected{{end}}>{{.T "Savings / Term" "account type"}}</option>
+                  <option value="Cash" {{if eq .Selected.Type "Cash"}}selected{{end}}>{{.T "Cash" "account type"}}</option>
+                  <option value="Credit Card" {{if eq .Selected.Type "Credit Card"}}selected{{end}}>{{.T "Credit Card" "account type"}}</option>
+                  <option value="Loan" {{if eq .Selected.Type "Loan"}}selected{{end}}>{{.T "Loan" "account type"}}</option>
+                </select>
+              </label>
+              <label>{{.T "Status"}}
+                <select name="status" required>
+                  <option value="Open" {{if eq .Selected.Status "Open"}}selected{{end}}>{{.T "Open" "account status"}}</option>
+                  <option value="Closed" {{if eq .Selected.Status "Closed"}}selected{{end}}>{{.T "Closed" "account status"}}</option>
+                </select>
+              </label>
+              <label>{{.T "Currency"}}
+                <select name="currency_id" required>
+                  {{range .Currencies}}<option value="{{.ID}}" {{if eq .ID $.Selected.CurrencyID}}selected{{end}}>{{.Symbol}} - {{.Name}}</option>{{end}}
+                </select>
+              </label>
+              <label>{{.T "Initial Balance"}} <input type="text" inputmode="decimal" data-amount name="initial" value="{{printf "%.2f" .Selected.Initial}}" title="{{.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+              <label>{{.T "Account Number"}} <input name="account_num" value="{{.Selected.AccountNum}}" autocomplete="off"></label>
+              <label>{{.T "Held At"}} <input name="held_at" value="{{.Selected.HeldAt}}" autocomplete="off"></label>
+              <label>{{.T "Website"}} <input name="website" value="{{.Selected.Website}}" autocomplete="off"></label>
+              <label>{{.T "Statement Date"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="statement_date" value="{{.Selected.StatementDate}}"></label>
+              <label>{{.T "Minimum Balance"}} <input type="text" inputmode="decimal" data-amount name="minimum_balance" value="{{printf "%.2f" .Selected.MinimumBalance}}" title="{{.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+              <label>{{.T "Credit Limit"}} <input type="text" inputmode="decimal" data-amount name="credit_limit" value="{{printf "%.2f" .Selected.CreditLimit}}" title="{{.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+              <label>{{.T "Interest Rate"}} <input type="number" step="0.001" name="interest_rate" value="{{printf "%.3f" .Selected.InterestRate}}"></label>
+              <label>{{.T "Payment Due"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="payment_due_date" value="{{.Selected.PaymentDueDate}}"></label>
+              <label>{{.T "Minimum Payment"}} <input type="text" inputmode="decimal" data-amount name="minimum_payment" value="{{printf "%.2f" .Selected.MinimumPayment}}" title="{{.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+              <label>{{.T "Initial Date"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="initial_date" value="{{.Selected.InitialDate}}"></label>
+              <label class="checkline"><input type="checkbox" name="favorite" value="true" {{if .Selected.Favorite}}checked{{end}}> {{.T "Favorite"}}</label>
+              <label class="wide">{{.T "Contact"}} <input name="contact_info" value="{{.Selected.ContactInfo}}" autocomplete="off"></label>
+              <label class="wide">{{.T "Access Info"}} <input name="access_info" value="{{.Selected.AccessInfo}}" autocomplete="off"></label>
+              <label class="wide">{{.T "Notes"}} <input name="notes" value="{{.Selected.Notes}}" autocomplete="off"></label>
+              <button type="submit">{{.T "Save Account"}}</button>
+            </form>
+          </details>
+        {{else if .Info.WriteEnabled}}
+          <p class="notice">{{.T "This account type is shown read-only in MMXC."}}</p>
+        {{end}}
+        <form class="toolbar filters autosubmit" method="get" action="/accounts">
+          <input type="hidden" name="account_id" value="{{.Selected.ID}}">
+          <label>{{.T "From"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="from" value="{{.Filter.From}}"></label>
+          <label>{{.T "To"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="to" value="{{.Filter.To}}"></label>
+          <label>{{.T "Type" "transaction type filter label"}}
+            <select name="type">
+              <option value="" {{if eq .Filter.Type ""}}selected{{end}}>{{.T "All"}}</option>
+              <option value="Withdrawal" {{if eq .Filter.Type "Withdrawal"}}selected{{end}}>{{.T "Withdrawal" "transaction type"}}</option>
+              <option value="Deposit" {{if eq .Filter.Type "Deposit"}}selected{{end}}>{{.T "Deposit" "transaction type"}}</option>
+              <option value="Transfer" {{if eq .Filter.Type "Transfer"}}selected{{end}}>{{.T "Transfer" "transaction type"}}</option>
+            </select>
+          </label>
+          <label>{{.T "Status" "transaction status filter label"}}
+            <select name="status">
+              <option value="" {{if eq .Filter.Status ""}}selected{{end}}>{{.T "All"}}</option>
+              <option value="__blank" {{if eq .Filter.Status "__blank"}}selected{{end}}>{{.T "Unset" "transaction status"}}</option>
+              <option value="Reconciled" {{if eq .Filter.Status "Reconciled"}}selected{{end}}>{{.T "Reconciled" "transaction status"}}</option>
+              <option value="Void" {{if eq .Filter.Status "Void"}}selected{{end}}>{{.T "Void" "transaction status"}}</option>
+              <option value="Follow up" {{if eq .Filter.Status "Follow up"}}selected{{end}}>{{.T "Follow up" "transaction status"}}</option>
+              <option value="Duplicate" {{if eq .Filter.Status "Duplicate"}}selected{{end}}>{{.T "Duplicate" "transaction status"}}</option>
+            </select>
+          </label>
+          <label>{{.T "Payee"}} <input type="search" name="payee" value="{{.Filter.Payee}}"></label>
+          <label>{{.T "Category"}} <input type="search" name="category" value="{{.Filter.Category}}"></label>
+          <label>{{.T "Search"}} <input type="search" name="search" value="{{.Filter.Search}}"></label>
+          <a class="button-link" href="/accounts?account_id={{.Selected.ID}}&reset=1">{{.T "Clear"}}</a>
+        </form>
+        <details class="entry-panel">
+          <summary>{{.T "New Transaction"}}</summary>
+          {{if and .Info.WriteEnabled .Selected.Editable}}
+            {{template "transaction_entry" (dict "Root" . "Action" "/transactions/create" "Submit" (.T "Save Transaction") "Cancel" "" "Split" "toggle" "FixAccountID" .Selected.ID "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" (today) "CatDefault" "" "ReturnTo" "" "Lines" (blankSplits 2))}}
+          {{else if .Info.WriteEnabled}}
+            <p class="notice">{{.T "Manual entry is disabled for this account type."}}</p>
+          {{else}}
+            <p class="notice">{{.T "Manual entry is disabled because the selected database file is read-only."}}</p>
+          {{end}}
+        </details>
+        {{template "tx_datalists" .}}
+        <table>
+          <thead>
+            <tr>
+              <th>{{.T "Date"}}</th>
+              <th>{{.T "Type" "transaction type column heading"}}</th>
+              <th>{{.T "Payee / Transfer"}}</th>
+              <th>{{.T "Category"}}</th>
+              <th>{{.T "Status" "transaction status column heading"}}</th>
+              <th class="right">{{.T "Amount" "money amount column heading"}}</th>
+              {{if .Info.ShowAccountBalance}}<th class="right">{{.T "Balance" "running account balance after this transaction"}}</th>{{end}}
+              <th>{{.T "Notes"}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Transactions}}
+              {{if and $.EditTransaction (eq $.EditTransaction.ID .ID)}}
+                {{$e := $.EditTransaction}}
+                <tr class="edit-row">
+                  <td colspan="{{if $.Info.ShowAccountBalance}}8{{else}}7{{end}}">
+                    {{if not $e.Editable}}
+                      <p class="notice">{{$.T "This transaction belongs to an account type that is shown read-only in MMXC."}}</p>
+                    {{else if gt $e.SplitCount 0}}
+                      <p class="notice">{{$.T "Editing split transaction. Parent amount is computed from split lines."}}</p>
+                      {{template "transaction_entry" (dict "Root" $ "Action" "/transactions/update" "Submit" ($.T "Update Split Parent") "Cancel" (highlight $.CancelTo $e.ID) "E" $e "Split" "fixed" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" "" "CatDefault" "" "ReturnTo" $.ReturnTo "Lines" $e.Splits)}}
+                    {{else}}
+                      {{template "transaction_entry" (dict "Root" $ "Action" "/transactions/update" "Submit" ($.T "Update Transaction") "Cancel" (highlight $.CancelTo $e.ID) "E" $e "Split" "toggle" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" "" "CatDefault" "" "ReturnTo" $.ReturnTo "Lines" (blankSplits 2))}}
+                    {{end}}
+                  </td>
+                </tr>
+              {{else}}
+                <tr{{if and $.Info.WriteEnabled .Editable (or (ne .Status "Void") $.Info.AllowTransactionDelete)}} class="actionable"{{if eq .Status "Void"}} data-voided="true"{{end}} data-trans-id="{{.ID}}" data-account-id="{{$.Selected.ID}}" data-return-to="{{$.ReturnTo}}" data-split-count="{{.SplitCount}}"{{end}}>
+                  <td class="date">{{$.DateFmt .Date}}</td>
+                  <td>{{.Type}}</td>
+                  <td>{{payee .DisplayText}}</td>
+                  <td{{if .SplitHint}} class="split-cell" title="{{.SplitHint}}"{{end}}>{{.Category}}</td>
+                  <td>{{.Status}}</td>
+                  <td class="right amount {{if lt .DisplayAmt 0.0}}negative{{else}}positive{{end}}">{{money .DisplayAmt}}</td>
+                  {{if $.Info.ShowAccountBalance}}<td class="right amount {{if lt .Balance 0.0}}negative{{else}}positive{{end}}">{{money .Balance}}</td>{{end}}
+                  <td>{{short .Notes}}</td>
+                </tr>
+              {{end}}
+            {{else}}
+              <tr><td colspan="{{if $.Info.ShowAccountBalance}}8{{else}}7{{end}}" class="empty">{{$.T "No transactions found."}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{if .Info.WriteEnabled}}
+          <ul id="row-menu" class="context-menu" hidden>
+            <li><button type="button" data-action="edit">{{.T "Edit transaction"}}</button></li>
+            <li><button type="button" data-action="void">{{.T "Void transaction"}}</button></li>
+            {{if .Info.AllowTransactionDelete}}<li><button type="button" data-action="delete">{{.T "Delete transaction"}}</button></li>{{end}}
+          </ul>
+        {{end}}
+      {{else}}
+        <div class="empty">{{.T "No accounts found."}}</div>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "categories"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>{{.T "Categories"}}</h2>
+      </div>
+      <details class="mini-create">
+        <summary>{{.T "New Category"}}</summary>
+        {{if .Info.WriteEnabled}}
+          <form method="post" action="/categories/create">
+            <label>{{.T "Name"}} <input required name="name" autocomplete="off"></label>
+            <label>{{.T "Parent"}} <input name="parent_text" list="parent-category-options" autocomplete="off"></label>
+            <input type="hidden" name="active" value="false">
+            <label class="checkline"><input type="checkbox" name="active" value="true" checked> {{.T "Active"}}</label>
+            <button type="submit">{{.T "Save"}}</button>
+            <datalist id="parent-category-options">
+              {{range .Categories}}{{if .Active}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}"></option>{{end}}{{end}}
+            </datalist>
+          </form>
+        {{else}}
+          <p class="notice">{{.T "Read-only mode."}}</p>
+        {{end}}
+      </details>
+      <div class="entity-list">
+        {{range .Categories}}{{if showCategoryNav $.Info .}}
+          <a class="entity-link tree-depth-{{.Depth}} {{if and $.SelectedCategory (eq $.SelectedCategory.ID .ID)}}selected{{end}}" href="/categories?category_id={{.ID}}">
+            <span>
+              <strong>{{.Name}}</strong>
+              <small>{{if .Parent}}{{.Parent}}{{else}}{{$.T "Top level"}}{{end}} · {{if .Active}}{{$.T "Active"}}{{else}}{{$.T "Inactive"}}{{end}}</small>
+            </span>
+            <b>{{.Count}}</b>
+          </a>
+        {{end}}{{end}}
+      </div>
+    </aside>
+    <section class="content">
+      {{if .SelectedCategory}}
+        <div class="detail-head">
+          <div>
+            <h1>{{.SelectedCategory.Name}}</h1>
+            <p>{{if .SelectedCategory.Parent}}{{.T "Parent:"}} {{.SelectedCategory.Parent}}{{else}}{{.T "Top-level category"}}{{end}} · {{if .SelectedCategory.Active}}{{.T "Active"}}{{else}}{{.T "Inactive"}}{{end}}</p>
+          </div>
+          <div class="summary-chips">
+            <div class="summary-chip">
+              <span>{{.T "Transactions"}}</span>
+              <strong>{{.TransactionSummary.Count}}</strong>
+            </div>
+            <div class="summary-chip">
+              <span>{{.T "Withdrawals"}}</span>
+              <strong>{{money .TransactionSummary.Withdrawals}}</strong>
+            </div>
+            <div class="summary-chip">
+              <span>{{.T "Deposits"}}</span>
+              <strong>{{money .TransactionSummary.Deposits}}</strong>
+            </div>
+            <div class="summary-chip">
+              <span>{{.T "Net" "net amount after deposits minus withdrawals"}}</span>
+              <strong>{{money .TransactionSummary.Net}}</strong>
+            </div>
+          </div>
+        </div>
+        {{if .Info.WriteEnabled}}
+          <details class="entry-panel">
+            <summary>{{.T "Edit Category"}}</summary>
+            <form class="entry-grid" method="post" action="/categories/update">
+              <input type="hidden" name="category_id" value="{{.SelectedCategory.ID}}">
+              <label>{{.T "Name"}} <input required name="name" value="{{.SelectedCategory.Name}}" autocomplete="off"></label>
+              <label>{{.T "Parent"}} <input name="parent_text" list="edit-parent-category-options" value="{{.SelectedCategory.Parent}}" autocomplete="off"></label>
+              <input type="hidden" name="active" value="false">
+              <label class="checkline"><input type="checkbox" name="active" value="true" {{if .SelectedCategory.Active}}checked{{end}}> {{.T "Active"}}</label>
+              <button type="submit">{{.T "Save Category"}}</button>
+              <datalist id="edit-parent-category-options">
+                {{range .Categories}}{{if and .Active (ne .ID $.SelectedCategory.ID)}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}"></option>{{end}}{{end}}
+              </datalist>
+            </form>
+            {{if .SelectedCategory.CanDelete}}
+              <form class="danger-form" method="post" action="/categories/delete">
+                <input type="hidden" name="category_id" value="{{.SelectedCategory.ID}}">
+                <button type="submit">{{.T "Delete Unused Category"}}</button>
+              </form>
+            {{end}}
+          </details>
+          <details class="entry-panel">
+            <summary>{{.T "New Transaction"}}</summary>
+            {{if not .SelectedCategory.Active}}
+              <p class="notice">{{.T "This category is inactive. Choose an active category before creating transactions."}}</p>
+            {{else if or .Info.AllowTopLevelCategories .SelectedCategory.Parent}}
+              {{template "transaction_entry" (dict "Root" . "Action" "/transactions/create" "Submit" (.T "Save Transaction") "Cancel" "" "Split" "toggle" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" .SelectedCategory.ID "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" (today) "CatDefault" "" "ReturnTo" .ReturnTo "Lines" (blankSplits 2))}}
+            {{else}}
+              <p class="notice">{{.T "Choose a subcategory before creating transactions."}}</p>
+            {{end}}
+          </details>
+          {{template "tx_datalists" .}}
+        {{end}}
+        <form class="toolbar filters autosubmit" method="get" action="/categories">
+          <input type="hidden" name="category_id" value="{{.SelectedCategory.ID}}">
+          <label>{{.T "Latest" "label for how many of the most recent transactions are listed"}}
+            <select name="limit">
+              <option value="25" {{if eq .Filter.Limit 25}}selected{{end}}>25</option>
+              <option value="50" {{if eq .Filter.Limit 50}}selected{{end}}>50</option>
+              <option value="100" {{if eq .Filter.Limit 100}}selected{{end}}>100</option>
+              <option value="250" {{if eq .Filter.Limit 250}}selected{{end}}>250</option>
+              <option value="0" {{if eq .Filter.Limit 0}}selected{{end}}>{{.T "All"}}</option>
+            </select>
+          </label>
+          <label>{{.T "From"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="from" value="{{.Filter.From}}"></label>
+          <label>{{.T "To"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="to" value="{{.Filter.To}}"></label>
+          <label>{{.T "Type" "transaction type filter label"}}
+            <select name="type">
+              <option value="" {{if eq .Filter.Type ""}}selected{{end}}>{{.T "All"}}</option>
+              <option value="Withdrawal" {{if eq .Filter.Type "Withdrawal"}}selected{{end}}>{{.T "Withdrawal" "transaction type"}}</option>
+              <option value="Deposit" {{if eq .Filter.Type "Deposit"}}selected{{end}}>{{.T "Deposit" "transaction type"}}</option>
+              <option value="Transfer" {{if eq .Filter.Type "Transfer"}}selected{{end}}>{{.T "Transfer" "transaction type"}}</option>
+            </select>
+          </label>
+          <label>{{.T "Payee"}} <input type="search" name="payee" value="{{.Filter.Payee}}"></label>
+          <label>{{.T "Search"}} <input type="search" name="search" value="{{.Filter.Search}}"></label>
+          <a class="button-link" href="/categories?category_id={{.SelectedCategory.ID}}&reset=1">{{.T "Clear"}}</a>
+        </form>
+        {{template "transaction_table_with_account" .}}
+      {{else}}
+        <div class="empty">{{.T "No categories found."}}</div>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "payees"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>{{.T "Payees"}}</h2>
+      </div>
+      <details class="mini-create">
+        <summary>{{.T "New Payee"}}</summary>
+        {{if .Info.WriteEnabled}}
+          <form method="post" action="/payees/create">
+            <label>{{.T "Name"}} <input required name="name" autocomplete="off"></label>
+            <label>{{.T "Default Category"}} <input name="category_text" list="payee-category-options" autocomplete="off"></label>
+            <label>{{.T "Notes"}} <input name="notes" autocomplete="off"></label>
+            <input type="hidden" name="active" value="false">
+            <label class="checkline"><input type="checkbox" name="active" value="true" checked> {{.T "Active"}}</label>
+            <button type="submit">{{.T "Save"}}</button>
+            <datalist id="payee-category-options">
+              {{range .Categories}}{{if selectableCategory $.Info .}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}"></option>{{end}}{{end}}
+            </datalist>
+          </form>
+        {{else}}
+          <p class="notice">{{.T "Read-only mode."}}</p>
+        {{end}}
+      </details>
+      <div class="entity-list">
+        {{range .Payees}}{{if showPayeeNav $.Info .}}
+          <a class="entity-link{{if .Bucket}} bucket{{end}} {{if and $.SelectedPayee (eq $.SelectedPayee.ID .ID)}}selected{{end}}" href="/payees?payee_id={{.ID}}">
+            <span>
+              <strong>{{payee .Name}}</strong>
+              <small>{{if .Category}}{{.Category}}{{else}}{{$.T "No default category"}}{{end}} · {{if .Active}}{{$.T "Active"}}{{else}}{{$.T "Inactive"}}{{end}}</small>
+            </span>
+            <b>{{.Count}}</b>
+          </a>
+        {{end}}{{end}}
+      </div>
+    </aside>
+    <section class="content">
+      {{if .SelectedPayee}}
+        <div class="detail-head">
+          <div>
+            <h1>{{payee .SelectedPayee.Name}}</h1>
+            <p>{{if .SelectedPayee.Category}}{{.T "Default category:"}} {{.SelectedPayee.Category}}{{else}}{{.T "No default category"}}{{end}} · {{if .SelectedPayee.Active}}{{.T "Active"}}{{else}}{{.T "Inactive"}}{{end}}</p>
+          </div>
+          <div class="summary-chips">
+            <div class="summary-chip">
+              <span>{{.T "Transactions"}}</span>
+              <strong>{{.TransactionSummary.Count}}</strong>
+            </div>
+            <div class="summary-chip">
+              <span>{{.T "Withdrawals"}}</span>
+              <strong>{{money .TransactionSummary.Withdrawals}}</strong>
+            </div>
+            <div class="summary-chip">
+              <span>{{.T "Deposits"}}</span>
+              <strong>{{money .TransactionSummary.Deposits}}</strong>
+            </div>
+            <div class="summary-chip">
+              <span>{{.T "Net" "net amount after deposits minus withdrawals"}}</span>
+              <strong>{{money .TransactionSummary.Net}}</strong>
+            </div>
+          </div>
+        </div>
+        {{if .Info.WriteEnabled}}
+          <details class="entry-panel">
+            <summary>{{.T "Edit Payee"}}</summary>
+            <form class="entry-grid" method="post" action="/payees/update">
+              <input type="hidden" name="payee_id" value="{{.SelectedPayee.ID}}">
+              <label>{{.T "Name"}} <input required name="name" value="{{.SelectedPayee.Name}}" autocomplete="off"></label>
+              <label>{{.T "Default Category"}} <input name="category_text" list="edit-payee-category-options" value="{{.SelectedPayee.Category}}" autocomplete="off"></label>
+              <input type="hidden" name="active" value="false">
+              <label class="checkline"><input type="checkbox" name="active" value="true" {{if .SelectedPayee.Active}}checked{{end}}> {{.T "Active"}}</label>
+              <label class="wide">{{.T "Notes"}} <input name="notes" value="{{.SelectedPayee.Notes}}" autocomplete="off"></label>
+              <button type="submit">{{.T "Save Payee"}}</button>
+              <datalist id="edit-payee-category-options">
+                {{range .Categories}}{{if selectableCategory $.Info .}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}"></option>{{end}}{{end}}
+              </datalist>
+            </form>
+            {{if eq .SelectedPayee.Count 0}}
+              <form class="danger-form" method="post" action="/payees/delete">
+                <input type="hidden" name="payee_id" value="{{.SelectedPayee.ID}}">
+                <button type="submit">{{.T "Delete Unused Payee"}}</button>
+              </form>
+            {{end}}
+          </details>
+          <details class="entry-panel">
+            <summary>{{.T "New Transaction"}}</summary>
+            {{if .SelectedPayee.Active}}
+              {{template "transaction_entry" (dict "Root" . "Action" "/transactions/create" "Submit" (.T "Save Transaction") "Cancel" "" "Split" "toggle" "FixAccountID" 0 "FixPayeeID" .SelectedPayee.ID "FixCategoryID" 0 "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" (today) "CatDefault" .SelectedPayee.Category "ReturnTo" .ReturnTo "Lines" (blankSplits 2))}}
+            {{else}}
+              <p class="notice">{{.T "This payee is inactive. Choose an active payee before creating transactions."}}</p>
+            {{end}}
+          </details>
+          {{template "tx_datalists" .}}
+        {{end}}
+        <form class="toolbar filters autosubmit" method="get" action="/payees">
+          <input type="hidden" name="payee_id" value="{{.SelectedPayee.ID}}">
+          <label>{{.T "Latest" "label for how many of the most recent transactions are listed"}}
+            <select name="limit">
+              <option value="25" {{if eq .Filter.Limit 25}}selected{{end}}>25</option>
+              <option value="50" {{if eq .Filter.Limit 50}}selected{{end}}>50</option>
+              <option value="100" {{if eq .Filter.Limit 100}}selected{{end}}>100</option>
+              <option value="250" {{if eq .Filter.Limit 250}}selected{{end}}>250</option>
+              <option value="0" {{if eq .Filter.Limit 0}}selected{{end}}>{{.T "All"}}</option>
+            </select>
+          </label>
+          <label>{{.T "From"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="from" value="{{.Filter.From}}"></label>
+          <label>{{.T "To"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="to" value="{{.Filter.To}}"></label>
+          <label>{{.T "Type" "transaction type filter label"}}
+            <select name="type">
+              <option value="" {{if eq .Filter.Type ""}}selected{{end}}>{{.T "All"}}</option>
+              <option value="Withdrawal" {{if eq .Filter.Type "Withdrawal"}}selected{{end}}>{{.T "Withdrawal" "transaction type"}}</option>
+              <option value="Deposit" {{if eq .Filter.Type "Deposit"}}selected{{end}}>{{.T "Deposit" "transaction type"}}</option>
+              <option value="Transfer" {{if eq .Filter.Type "Transfer"}}selected{{end}}>{{.T "Transfer" "transaction type"}}</option>
+            </select>
+          </label>
+          <label>{{.T "Category"}} <input type="search" name="category" value="{{.Filter.Category}}"></label>
+          <label>{{.T "Search"}} <input type="search" name="search" value="{{.Filter.Search}}"></label>
+          <a class="button-link" href="/payees?payee_id={{.SelectedPayee.ID}}&reset=1">{{.T "Clear"}}</a>
+        </form>
+        {{template "transaction_table_with_account" .}}
+      {{else}}
+        <div class="empty">{{.T "No payees found."}}</div>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "transaction_table_with_account"}}
+<table>
+  <thead>
+    <tr>
+      <th>{{$.T "Date"}}</th>
+      <th>{{$.T "Account"}}</th>
+      <th>{{$.T "Type" "transaction type column heading"}}</th>
+      <th>{{$.T "Payee / Transfer"}}</th>
+      <th>{{$.T "Category"}}</th>
+      <th>{{$.T "Status" "transaction status column heading"}}</th>
+      <th class="right">{{$.T "Amount" "money amount column heading"}}</th>
+      <th>{{$.T "Notes"}}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Transactions}}
+      {{if and $.EditTransaction (eq $.EditTransaction.ID .ID)}}
+        {{$e := $.EditTransaction}}
+        <tr class="edit-row">
+          <td colspan="8">
+            {{if not $e.Editable}}
+              <p class="notice">{{$.T "This transaction belongs to an account type that is shown read-only in MMXC."}}</p>
+            {{else if gt $e.SplitCount 0}}
+              <p class="notice">{{$.T "Editing split transaction. Parent amount is computed from split lines."}}</p>
+              {{template "transaction_entry" (dict "Root" $ "Action" "/transactions/update" "Submit" ($.T "Update Split Parent") "Cancel" (highlight $.ReturnTo $e.ID) "E" $e "Split" "fixed" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" "" "CatDefault" "" "ReturnTo" $.ReturnTo "Lines" $e.Splits)}}
+            {{else}}
+              {{template "transaction_entry" (dict "Root" $ "Action" "/transactions/update" "Submit" ($.T "Update Transaction") "Cancel" (highlight $.ReturnTo $e.ID) "E" $e "Split" "toggle" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "tx-payee-options" "CatList" "tx-category-options" "Date" "" "CatDefault" "" "ReturnTo" $.ReturnTo "Lines" (blankSplits 2))}}
+            {{end}}
+          </td>
+        </tr>
+      {{else}}
+        <tr{{if and $.Info.WriteEnabled .Editable (or (ne .Status "Void") $.Info.AllowTransactionDelete)}} class="actionable"{{if eq .Status "Void"}} data-voided="true"{{end}} data-trans-id="{{.ID}}" data-account-id="{{.AccountID}}" data-return-to="{{$.ReturnTo}}" data-split-count="{{.SplitCount}}"{{end}}>
+          <td class="date">{{$.DateFmt .Date}}</td>
+          <td>{{.Account}}</td>
+          <td>{{.Type}}</td>
+          <td>{{payee .DisplayText}}</td>
+          <td{{if .SplitHint}} class="split-cell" title="{{.SplitHint}}"{{end}}>{{.Category}}</td>
+          <td>{{.Status}}</td>
+          <td class="right amount {{if lt .DisplayAmt 0.0}}negative{{else}}positive{{end}}">{{money .DisplayAmt}}</td>
+          <td>{{short .Notes}}</td>
+        </tr>
+      {{end}}
+    {{else}}
+      <tr><td colspan="8" class="empty">{{$.T "No transactions found."}}</td></tr>
+    {{end}}
+  </tbody>
+</table>
+{{if .Info.WriteEnabled}}
+  <ul id="row-menu" class="context-menu" hidden>
+    <li><button type="button" data-action="edit">{{$.T "Edit transaction"}}</button></li>
+    <li><button type="button" data-action="void">{{$.T "Void transaction"}}</button></li>
+    {{if .Info.AllowTransactionDelete}}<li><button type="button" data-action="delete">{{$.T "Delete transaction"}}</button></li>{{end}}
+  </ul>
+{{end}}
+{{end}}
+
+{{define "assistant"}}
+{{template "head" .}}
+  <main class="layout assistant-layout">
+    <aside class="sidebar assistant-history-panel">
+      <div class="side-head">
+        <h2>{{.T "History"}}</h2>
+      </div>
+      <div class="assistant-history-list" data-assistant-history>
+        <p class="empty">{{.T "No questions yet."}}</p>
+      </div>
+    </aside>
+    <section class="content assistant-shell">
+      <div class="detail-head">
+        <div>
+          <h1>{{.T "Ask" "action"}}</h1>
+          {{/* Same source string (and guidance) as the nav pill's tooltip, so
+               the two share one translation and always read alike. */}}
+          <p>{{.T "Ask questions about your finances in plain language" "nav tooltip for the AI assistant"}}</p>
+        </div>
+      </div>
+      <form class="assistant-prompt" method="post" action="/assistant/ask" data-assistant-prompt-form data-global-busy-form data-busy-label="{{.T "Asking..."}}">
+        <input type="search" name="prompt" value="{{.Assistant.Prompt}}" placeholder="{{.T "How much did I spend on groceries last month?"}}" autocomplete="off" {{if not .EditTransaction}}autofocus{{end}}>
+        <button type="submit">{{.T "Ask" "action"}}</button>
+      </form>
+
+      {{/* Quick start: a few example questions, offered only until the first
+           answer arrives. app.js asks a clicked one exactly like a history
+           entry (its label is the question, already translated). */}}
+      {{if not (or .Assistant.Answer .Assistant.ClarificationQuestion)}}
+        <div class="assistant-samples" data-assistant-samples>
+          <span class="assistant-samples-label">{{.T "Try" "label introducing example questions to click"}}</span>
+          <button type="button" class="assistant-sample">{{.T "What is the balance of my accounts?" "example question on the Ask page"}}</button>
+          <button type="button" class="assistant-sample">{{.T "How much did I spend this month compared to last month?" "example question on the Ask page"}}</button>
+          <button type="button" class="assistant-sample">{{.T "Which transactions are still uncategorized?" "example question on the Ask page"}}</button>
+        </div>
+      {{end}}
+
+      {{if or .Assistant.Answer .Assistant.ClarificationQuestion}}
+        <section class="assistant-thread">
+          {{if .Assistant.Prompt}}
+            <div class="assistant-message user">
+              <p>{{.Assistant.Prompt}}</p>
+            </div>
+          {{end}}
+          <div class="assistant-message assistant {{if .Assistant.ClarificationQuestion}}clarify{{else}}final{{end}}">
+            {{if .Assistant.ClarificationQuestion}}
+              <p>{{.Assistant.ClarificationQuestion}}</p>
+              {{if .Assistant.ClarificationOptions}}
+                <form class="assistant-options" method="post" action="/assistant/ask" data-global-busy-form data-busy-label="{{.T "Asking..."}}">
+                  <input type="hidden" name="prompt" value="{{.Assistant.Prompt}}">
+                  <textarea name="transcript" hidden>{{.Assistant.ToolTranscript}}</textarea>
+                  {{range .Assistant.ClarificationOptions}}
+                    <button type="submit" name="clarification_answer" value="{{.}}">{{.}}</button>
+                  {{end}}
+                </form>
+              {{end}}
+            {{else}}
+              <div class="assistant-final-main">
+                <p>{{.Assistant.Answer}}</p>
+                <div class="assistant-feedback-row">
+                  {{if .Assistant.FeedbackSaved}}
+                    <span class="assistant-feedback-saved">{{.T "Feedback saved."}}</span>
+                  {{else}}
+                    <form method="post" action="/assistant/feedback">
+                      <input type="hidden" name="prompt" value="{{.Assistant.Prompt}}">
+                      <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+                      <button type="submit" class="icon-button ghost-icon assistant-feedback-button" aria-label="{{.T "Flag this answer as bad"}}" title="{{.T "Flag this answer as bad"}}">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path d="M6 21V4"></path>
+                          <path d="M6 4h10.5l-.9 3 2.4 3H6"></path>
+                        </svg>
+                      </button>
+                    </form>
+                  {{end}}
+                </div>
+              </div>
+              <div class="assistant-final-side">
+                {{with .Assistant.Budget}}{{with .Primary}}
+                <div class="summary-chips">
+                  <div class="summary-chip">
+                    <span>{{$.T "Budget"}} {{$.Assistant.Budget.Year}}</span>
+                    <strong>{{money .Budget}}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <span>{{$.T "Actual" "actual amount spent or received against a budget"}}</span>
+                    <strong>{{money .Actual}}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <span>{{$.T "Remaining" "short column label: budget amount still left"}}</span>
+                    <strong>{{money .Remaining}}</strong>
+                  </div>
+                </div>
+                {{end}}{{else}}
+                <div class="summary-chips">
+                  <div class="summary-chip">
+                    <span>{{.T "Transactions"}}</span>
+                    <strong>{{.Assistant.Totals.Count}}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <span>{{.T "Withdrawals"}}</span>
+                    <strong>{{money .Assistant.Totals.Withdrawals}}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <span>{{.T "Deposits"}}</span>
+                    <strong>{{money .Assistant.Totals.Deposits}}</strong>
+                  </div>
+                  <div class="summary-chip">
+                    <span>{{.T "Net" "net amount after deposits minus withdrawals"}}</span>
+                    <strong>{{money .Assistant.Totals.Net}}</strong>
+                  </div>
+                </div>
+                {{end}}
+              </div>
+            {{end}}
+          </div>
+        </section>
+      {{end}}
+      {{range .Assistant.Warnings}}
+        <p class="notice">{{.}}</p>
+      {{end}}
+      {{if .Info.AssistantQueryDetails}}
+        {{if .Assistant.QuerySummary}}
+          <details class="query-details">
+            <summary>{{.T "Query details"}}</summary>
+            <p>{{.Assistant.QuerySummary}}</p>
+            <pre>{{.Assistant.IntentJSON}}</pre>
+          </details>
+        {{else if .Assistant.IntentJSON}}
+          <details class="query-details">
+            <summary>{{.T "Query details"}}</summary>
+            <pre>{{.Assistant.IntentJSON}}</pre>
+          </details>
+        {{end}}
+      {{end}}
+      {{if .Assistant.Budget}}
+        {{with .Assistant.Budget}}
+          {{if .Entries}}
+            <div class="table-wrap">
+              <table class="budget-table">
+                <thead>
+                  <tr>
+                    <th>{{$.T "Category"}}</th>
+                    <th>{{$.T "Period"}}</th>
+                    <th class="right">{{$.T "Budget"}}</th>
+                    <th class="right">{{$.T "Actual" "actual amount spent or received against a budget"}}</th>
+                    <th class="right">{{$.T "Remaining" "short column label: budget amount still left"}}</th>
+                    <th class="right">{{$.T "Used" "percentage of a budget already spent"}}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{range .Entries}}
+                    <tr>
+                      <td>{{.Category}}{{if eq .Kind "income"}} ({{$.T "income" "marks a budget line as an income budget rather than an expense budget"}}){{end}}</td>
+                      <td>{{$.T .Period "budget period"}}</td>
+                      <td class="right amount">{{money .Budget}}</td>
+                      <td class="right amount">{{money .Actual}}</td>
+                      <td class="right amount {{if lt .Remaining 0.0}}negative{{end}}">{{money .Remaining}}</td>
+                      <td class="right">{{printf "%.0f%%" .UsedPercent}}</td>
+                    </tr>
+                  {{end}}
+                </tbody>
+              </table>
+            </div>
+            {{if gt .EntryCount (len .Entries)}}<p class="notice">{{printf ($.T "Showing the first %d of %d budget lines." "count of budget lines shown out of the total; both placeholders are numbers") (len .Entries) .EntryCount}}</p>{{end}}
+          {{end}}
+          {{if .Found}}<p><a href="{{.BudgetURL}}">{{$.T "Open budget"}} {{.Year}}</a></p>{{end}}
+        {{end}}
+      {{else if or .Assistant.Answer .Transactions}}
+        {{if .Info.WriteEnabled}}{{template "tx_datalists" .}}{{end}}
+        <div class="table-wrap">
+          {{template "transaction_table_with_account" .}}
+        </div>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "review"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>{{.T "Monthly Review"}}</h2>
+      </div>
+      <form class="mini-create month-nav" method="get" action="/review" data-auto-submit>
+        <a class="nav-arrow" title="{{.T "Previous month"}}" href="/review?month={{.MonthlyReview.PreviousMonth}}{{if .MonthlyReview.Selected}}&account_id={{.MonthlyReview.Selected.Account.ID}}{{end}}">‹</a>
+        <select name="year" aria-label="{{.T "Year"}}">
+          {{range .MonthlyReview.Years}}<option value="{{.}}" {{if eq . $.MonthlyReview.SelectedYear}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+        <select name="mon" aria-label="{{.T "Month"}}">
+          {{range .MonthlyReview.Months}}<option value="{{.Value}}" {{if eq .Value $.MonthlyReview.SelectedMonth}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        <a class="nav-arrow" title="{{.T "Next month"}}" href="/review?month={{.MonthlyReview.NextMonth}}{{if .MonthlyReview.Selected}}&account_id={{.MonthlyReview.Selected.Account.ID}}{{end}}">›</a>
+        {{if .MonthlyReview.Selected}}<input type="hidden" name="account_id" value="{{.MonthlyReview.Selected.Account.ID}}">{{end}}
+        <noscript><button type="submit">{{.T "Go"}}</button></noscript>
+      </form>
+      <form class="mini-create statement-upload" method="post" action="/review/extract" enctype="multipart/form-data" data-statement-upload>
+        <input type="hidden" name="month" value="{{.MonthlyReview.Month}}">
+        {{if .MonthlyReview.Selected}}<input type="hidden" name="account_id" value="{{.MonthlyReview.Selected.Account.ID}}">{{end}}
+        <label>{{.T "Import Statement"}}
+          <input required type="file" name="statement" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.ofx,.qfx,.qif,text/plain,application/pdf,image/png,image/jpeg,image/webp">
+        </label>
+        <small class="muted">{{.T "Drop a file or browse. Account and month are detected from the statement."}}</small>
+        {{if not .Info.AIAvailable}}<small class="muted">{{.T "AI-assisted import is not available; PDF and image statements will be attached for manual review. OFX and QIF downloads are still imported."}}</small>{{end}}
+        <span class="statement-busy" hidden>{{.T "Processing statement..."}}</span>
+      </form>
+      {{if .MonthlyReview.Selected}}<button type="button" class="rules-open" data-rules-open>{{.T "Learned Mappings" "button opening the list of statement-description to payee/category rules the app learned from past imports"}}</button>{{end}}
+      <div class="entity-list">
+        {{range .MonthlyReview.Rows}}
+          <a class="entity-link {{if eq $.MonthlyReview.SelectedAccountID .Account.ID}}selected{{end}}" href="/review?month={{$.MonthlyReview.Month}}&account_id={{.Account.ID}}">
+            <span>
+              <strong><span class="review-state review-state-{{.ReviewState}}" title="{{.ReviewStatus}}">{{if eq .ReviewState "reconciled"}}✓{{else if eq .ReviewState "partial"}}!{{else}}?{{end}}</span> {{.Account.Name}}</strong>
+              <small>{{.ReviewStatus}} · {{.TransactionN}} {{$.T "tx" "abbreviation for transactions"}}</small>
+            </span>
+            <span class="review-amount">
+              <b class="{{if lt .ClosingBalance 0.0}}negative{{else}}positive{{end}}" title="{{$.T "Closing balance on"}} {{$.DateFmt $.MonthlyReview.MonthEnd}}">{{money .ClosingBalance}}</b>
+              {{if .HasStatementClosing}}
+                {{if .ClosingReconciled}}<small class="recon ok" title="{{$.T "Matches statement closing on"}} {{$.DateFmt .StatementClosingDate}}">✓ {{$.T "reconciled" "statement reconciliation status"}} <span class="recon-date">{{$.DateFmt .StatementClosingDate}}</span></small>
+                {{else}}<small class="recon off" title="{{printf ($.T "Computed balance on %s differs from statement closing %s") ($.DateFmt .StatementClosingDate) (money .StatementClosingBalance)}}">Δ {{money .ClosingDelta}} <span class="recon-date">{{$.DateFmt .StatementClosingDate}}</span></small>{{end}}
+              {{end}}
+            </span>
+          </a>
+        {{end}}
+      </div>
+    </aside>
+    <section class="content">
+      {{if .MonthlyReview.Selected}}
+        {{$selected := .MonthlyReview.Selected}}
+        {{if gt (len .MonthlyReview.StatementSections) 1}}
+          <section class="statement-account-map">
+            <h1>{{.T "Accounts found in this statement" "bank statement import found multiple financial accounts"}}</h1>
+            <p>{{.T "The file is stored once. Choose where each account section belongs, or ignore sections you do not track; transactions and closing balances stay scoped to their printed account." "multi-account bank statement assignment guidance"}}</p>
+            <form method="post" action="/review/statements/attach">
+              <input type="hidden" name="document_hash" value="{{.MonthlyReview.StatementDocumentHash}}">
+              <input type="hidden" name="month" value="{{.MonthlyReview.Month}}">
+              <div class="statement-account-rows">
+                {{range $choice := .MonthlyReview.StatementSections}}
+                  <div class="statement-account-row">
+                    <input type="hidden" name="section_id" value="{{$choice.ID}}">
+                    <div>
+                      <strong>{{if $choice.AccountName}}{{$choice.AccountName}}{{else}}{{$.T "Unnamed statement account" "bank statement account whose printed name was not extracted"}}{{end}}</strong>
+                      {{if $choice.AccountNumber}}<small>{{$choice.AccountNumber}}</small>{{end}}
+                      <small>{{$choice.PeriodStart}} → {{$choice.PeriodEnd}} · {{$choice.CandidateN}} {{$.T "tx" "abbreviation for transactions"}}{{if $choice.HasClosing}} · {{$.T "closing" "bank statement closing balance"}} {{money $choice.ClosingBalance}}{{end}}</small>
+                    </div>
+                    <label>
+                      <span>{{$.T "MMEX account" "target financial account for an extracted statement section"}}</span>
+                      <select name="section_account_id" required>
+                        <option value="ignore" {{if $choice.Ignored}}selected{{end}}>— {{$.T "Ignore this account" "do not attach an extracted bank statement account section"}} —</option>
+                        {{range $.Accounts}}<option value="{{.ID}}" {{if and (not $choice.Ignored) (eq .ID $choice.SuggestedAccountID)}}selected{{end}}>{{.Name}}</option>{{end}}
+                      </select>
+                    </label>
+                    {{if $choice.Ignored}}<small class="muted">{{$.T "ignored" "extracted bank statement account section is not attached"}}</small>{{else if $choice.Confirmed}}<small class="recon ok">✓ {{$.T "remembered match" "previously confirmed bank statement account mapping"}}</small>{{else}}<small class="muted">{{$.T "needs confirmation" "bank statement account mapping status"}}</small>{{end}}
+                  </div>
+                {{end}}
+              </div>
+              <button type="submit">{{.T "Save account choices" "confirm attached and ignored account sections from one bank statement"}}</button>
+            </form>
+          </section>
+        {{end}}
+        {{if .MonthlyReview.NeedsAccountChoice}}
+          <div class="account-confirm">
+            <p>{{.T "Confirm which account this statement belongs to"}}{{if .MonthlyReview.StatementAccountName}} ({{.T "statement says"}} <strong>{{.MonthlyReview.StatementAccountName}}</strong>{{if .MonthlyReview.StatementAccountNumber}} · {{.MonthlyReview.StatementAccountNumber}}{{end}}){{end}}. {{.T "Best guess is"}} <strong>{{$selected.Account.Name}}</strong>.</p>
+            <form method="post" action="/review/import" class="inline-confirm">
+              <input type="hidden" name="month" value="{{.MonthlyReview.Month}}">
+              <input type="hidden" name="candidates_json" value="{{.MonthlyReview.ImportJSON}}">
+              <input type="hidden" name="stmt_account_name" value="{{.MonthlyReview.StatementAccountName}}">
+              <input type="hidden" name="stmt_account_number" value="{{.MonthlyReview.StatementAccountNumber}}">
+              <input type="hidden" name="stmt_file" value="{{.MonthlyReview.StatementFile}}">
+              <input type="hidden" name="stmt_closing_date" value="{{.MonthlyReview.StatementClosingDate}}">
+              <input type="hidden" name="stmt_closing_balance" value="{{printf "%.2f" .MonthlyReview.StatementClosingBalance}}">
+              <label>{{.T "Account"}}
+                <select name="account_id" required>
+                  {{range .MonthlyReview.Rows}}<option value="{{.Account.ID}}" {{if eq .Account.ID $.MonthlyReview.SelectedAccountID}}selected{{end}}>{{.Account.Name}}</option>{{end}}
+                </select>
+              </label>
+              <button type="submit">{{.T "Use this account"}}</button>
+            </form>
+          </div>
+        {{end}}
+        <div class="detail-head">
+          <div>
+            <h1>{{$selected.Account.Name}}</h1>
+            <p>{{.DateFmt .MonthlyReview.MonthStart}} to {{.DateFmt .MonthlyReview.MonthEnd}} · {{$selected.ReviewStatus}}</p>
+          </div>
+          <div class="head-right">
+            <div class="numbers">
+              <span>{{.T "Net" "net amount after income minus expenses"}}</span>
+              <strong class="{{if lt $selected.Net 0.0}}negative{{else}}positive{{end}}">{{money $selected.Net}}</strong>
+            </div>
+            {{if .Info.WriteEnabled}}
+              <form method="post" action="/review/reviewed" class="mark-reviewed">
+                <input type="hidden" name="account_id" value="{{$selected.Account.ID}}">
+                <input type="hidden" name="month" value="{{.MonthlyReview.Month}}">
+                {{if $selected.ManuallyReviewed}}
+                  <input type="hidden" name="reviewed" value="false">
+                  <button type="submit" class="reviewed-on" title="{{.T "Marked reviewed — click to unmark"}}">✓ {{.T "Reviewed"}}</button>
+                {{else}}
+                  <input type="hidden" name="reviewed" value="true">
+                  <button type="submit" title="{{.T "Mark this account's month reviewed"}}">{{.T "Mark reviewed"}}</button>
+                {{end}}
+              </form>
+            {{end}}
+          </div>
+        </div>
+        {{/* Balance cards are shown only where they answer something. A credit
+             card or loan gets none: a balance at an arbitrary month boundary
+             says nothing useful about a card, so only the month's activity is
+             left. A statement figure appears only when it differs from the month
+             figure beside it — when the cycle is a calendar month the two are the
+             same number, and the reconciliation mark moves onto the month's
+             closing card instead. */}}
+        <div class="metrics">
+          <div><span>{{.T "Transactions"}}</span><strong>{{$selected.TransactionN}}</strong></div>
+          {{if not $selected.IsLiability}}
+            <div><span>{{.T "Opening Balance" "account balance immediately before the reviewed month"}} ({{.DateFmt .MonthlyReview.MonthStart}})</span><strong class="{{if lt $selected.OpeningBalance 0.0}}negative{{else}}positive{{end}}">{{money $selected.OpeningBalance}}</strong></div>
+          {{end}}
+          {{if $selected.IsLiability}}
+            <div><span>{{.T "Payments" "money paid onto a credit card or loan during the period, as opposed to income"}}</span><strong class="positive">{{money $selected.Income}}</strong></div>
+          {{else}}
+            <div><span>{{.T "Income" "money received during the period"}}</span><strong class="positive">{{money $selected.Income}}</strong></div>
+          {{end}}
+          <div><span>{{.T "Expenses" "money spent during the period"}}</span><strong class="negative">{{money $selected.Expenses}}</strong></div>
+          {{if not $selected.IsLiability}}
+            <div><span>{{.T "Closing Balance" "account balance at period end"}} ({{.DateFmt .MonthlyReview.MonthEnd}})</span><strong class="{{if lt $selected.ClosingBalance 0.0}}negative{{else}}positive{{end}}" title="{{if $selected.ClosingMatchesStatement}}{{.T "Matches the statement closing balance" "tooltip: the computed balance agrees with the bank statement"}}{{end}}">{{money $selected.ClosingBalance}}{{if $selected.ClosingMatchesStatement}} <span class="recon ok">✓</span>{{end}}</strong></div>
+          {{end}}
+          {{if $selected.ShowStatementOpening}}
+            <div><span>{{.T "Statement Opening" "account balance when the bank statement period began, to check against the opening balance printed on it"}} ({{.DateFmt $selected.StatementOpeningDate}})</span><strong class="{{if lt $selected.StatementOpeningBalance 0.0}}negative{{else}}positive{{end}}">{{money $selected.StatementOpeningBalance}}</strong></div>
+          {{end}}
+          {{if $selected.ShowStatementClosing}}
+            <div><span>{{.T "Statement Closing" "closing balance reported by the bank statement"}}{{if $selected.StatementClosingDate}} ({{.DateFmt $selected.StatementClosingDate}}){{end}}</span><strong class="{{if $selected.ClosingReconciled}}positive{{else}}negative{{end}}" title="{{if $selected.ClosingReconciled}}{{.T "Reconciled" "transaction or statement reconciliation status"}}{{else}}{{.T "Computed balance differs by" "bank statement reconciliation difference"}} {{money $selected.ClosingDelta}}{{end}}">{{money $selected.StatementClosingBalance}}{{if not $selected.ClosingReconciled}} (Δ {{money $selected.ClosingDelta}}){{end}}</strong></div>
+          {{end}}
+        </div>
+        {{if .MonthlyReview.Statements}}
+          <div class="statement-archive">
+            <h2>{{.T "Statements this month"}}</h2>
+            <ul class="statement-list">
+              {{range .MonthlyReview.Statements}}
+                <li>
+                  <div class="statement-summary">
+                    <a href="/review/statement?account_id={{.AccountID}}&file={{.File}}" target="_blank" rel="noopener">{{if .OriginalName}}{{.OriginalName}}{{else}}{{.File}}{{end}}</a>
+                    <span class="muted">{{.PeriodStart}} → {{.PeriodEnd}}{{if .HasClosing}} · closing {{money .ClosingBalance}}{{end}} · {{len .Candidates}} tx · uploaded {{.UploadedDate}}</span>
+                  </div>
+                  {{if $.Info.WriteEnabled}}
+                    <div class="statement-actions">
+                      {{if gt (len $.Accounts) 1}}
+                        <form method="post" action="/review/statement/reassign" class="statement-reassign">
+                          <input type="hidden" name="account_id" value="{{.AccountID}}">
+                          <input type="hidden" name="file" value="{{.File}}">
+                          <input type="hidden" name="month" value="{{$.MonthlyReview.Month}}">
+                          <label>
+                            <span>{{$.T "Reassign to" "choose a different financial account for an uploaded bank statement"}}</span>
+                            <select name="target_account_id">
+                              {{range $.Accounts}}<option value="{{.ID}}" {{if eq .ID $selected.Account.ID}}selected{{end}}>{{.Name}}</option>{{end}}
+                            </select>
+                          </label>
+                          <button type="submit">{{$.T "Reassign" "move an uploaded bank statement to a different financial account"}}</button>
+                        </form>
+                      {{end}}
+                      <form method="post" action="/review/statement/delete" class="statement-delete" data-confirm="{{if .DocumentHash}}{{$.T "Detach this account section and forget its remembered assignment? The shared uploaded file remains available to its other accounts." "confirmation before removing one account section from a shared bank statement"}}{{else}}{{$.T "Delete this uploaded statement and forget its remembered account assignment?" "confirmation before permanently deleting a bank statement upload"}}{{end}}" data-confirm-ok="{{$.T "Delete" "confirm button that permanently deletes an uploaded bank statement"}}">
+                        <input type="hidden" name="account_id" value="{{.AccountID}}">
+                        <input type="hidden" name="file" value="{{.File}}">
+                        <input type="hidden" name="month" value="{{$.MonthlyReview.Month}}">
+                        <button type="submit">{{if .DocumentHash}}{{$.T "Detach" "remove one account section attachment while keeping the shared uploaded statement"}}{{else}}{{$.T "Delete" "delete an uploaded bank statement"}}{{end}}</button>
+                      </form>
+                      {{if .DocumentHash}}
+                        <form method="post" action="/review/statement/document/delete" class="statement-delete" data-confirm="{{$.T "Delete this uploaded file and detach all of its account sections? This cannot be undone." "confirmation before permanently deleting a shared multi-account bank statement"}}" data-confirm-ok="{{$.T "Delete" "confirm button that permanently deletes an uploaded bank statement"}}">
+                          <input type="hidden" name="document_hash" value="{{.DocumentHash}}">
+                          <input type="hidden" name="account_id" value="{{.AccountID}}">
+                          <input type="hidden" name="month" value="{{$.MonthlyReview.Month}}">
+                          <button type="submit">{{$.T "Delete file everywhere" "permanently delete a shared uploaded bank statement from every account"}}</button>
+                        </form>
+                      {{end}}
+                    </div>
+                  {{end}}
+                </li>
+              {{end}}
+            </ul>
+          </div>
+        {{end}}
+        {{if .MonthlyReview.ClosingBalanceChecked}}
+          <div class="closing-check {{if .MonthlyReview.NeedsAccountChoice}}tentative{{else if .MonthlyReview.ClosingBalanceMatches}}match{{else}}mismatch{{end}}"
+               data-closing-banner
+               data-closing-base="{{printf "%.2f" .MonthlyReview.ClosingBaseBalance}}"
+               data-closing-expected="{{printf "%.2f" .MonthlyReview.StatementClosingBalance}}"
+               data-closing-date="{{.MonthlyReview.StatementClosingDate}}"
+               data-closing-date-display="{{.DateFmt .MonthlyReview.StatementClosingDate}}"
+               data-tentative="{{if .MonthlyReview.NeedsAccountChoice}}true{{else}}false{{end}}">
+            <span data-closing-text>
+              {{if .MonthlyReview.ClosingBalanceMatches}}
+                <strong>{{.T "✓ Closing balance checks out." "bank statement reconciliation success message"}}</strong> {{printf (.T "After importing the selected candidates, the account balance on %s will be %s, matching the statement closing balance." "bank statement reconciliation message; first %s is a date, second %s is money") (.DateFmt .MonthlyReview.StatementClosingDate) (money .MonthlyReview.ProjectedClosingBalance)}}
+              {{else}}
+                <strong>{{.T "✗ Closing balance mismatch." "bank statement reconciliation error message"}}</strong> {{printf (.T "The statement closing balance on %s expects %s, but importing the selected candidates projects %s (off by %s)." "bank statement reconciliation message; first %s is a date and the other placeholders are money amounts") (.DateFmt .MonthlyReview.StatementClosingDate) (money .MonthlyReview.StatementClosingBalance) (money .MonthlyReview.ProjectedClosingBalance) (money .MonthlyReview.ClosingBalanceDelta)}}
+              {{end}}
+            </span>
+            {{if .MonthlyReview.NeedsAccountChoice}}<em>{{.T "Tentative — confirm the account above first; the balance (and its sign for credit cards) is computed against the best-guess account."}}</em>{{end}}
+          </div>
+        {{end}}
+        <details class="entry-panel" id="review-new-transaction">
+          <summary>{{.T "New Transaction"}}</summary>
+          {{if and .Info.WriteEnabled $selected.Account.Editable}}
+            {{template "transaction_entry" (dict "Root" . "Action" "/transactions/create" "Submit" (.T "Save Transaction") "Cancel" "" "Split" "toggle" "FixAccountID" $selected.Account.ID "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "review-payee-options" "CatList" "review-category-options" "Date" .MonthlyReview.MonthEnd "CatDefault" "" "ReturnTo" (printf "/review?month=%s&account_id=%d#review-new-transaction" .MonthlyReview.Month $selected.Account.ID) "Lines" (blankSplits 2))}}
+          {{else if .Info.WriteEnabled}}
+            <p class="notice">{{.T "Manual entry is disabled for this account type."}}</p>
+          {{else}}
+            <p class="notice">{{.T "Manual entry is disabled because MMXC is running read-only."}}</p>
+          {{end}}
+        </details>
+        <h2>{{.T "Month Transactions"}}</h2>
+        <table>
+          <thead><tr><th>{{.T "Date"}}</th><th>{{.T "Type" "transaction type column heading"}}</th><th>{{.T "Payee / Transfer"}}</th><th>{{.T "Category"}}</th><th>{{.T "Status" "transaction status column heading"}}</th><th class="right">{{.T "Amount" "money amount column heading"}}</th><th>{{.T "Notes"}}</th></tr></thead>
+          <tbody>
+            {{range .MonthlyReview.Transactions}}
+              {{if and $.EditTransaction (eq $.EditTransaction.ID .ID)}}
+                {{$e := $.EditTransaction}}
+                <tr class="edit-row">
+                  <td colspan="7">
+                    {{if not $e.Editable}}
+                      <p class="notice">{{$.T "This transaction belongs to an account type that is shown read-only in MMXC."}}</p>
+                    {{else if gt $e.SplitCount 0}}
+                      <p class="notice">{{$.T "Editing split transaction. Parent amount is computed from split lines."}}</p>
+                      {{template "transaction_entry" (dict "Root" $ "Action" "/transactions/update" "Submit" ($.T "Update Split Parent") "Cancel" (highlight $.CancelTo $e.ID) "E" $e "Split" "fixed" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "review-payee-options" "CatList" "review-category-options" "Date" "" "CatDefault" "" "ReturnTo" $.ReturnTo "Lines" $e.Splits)}}
+                    {{else}}
+                      {{template "transaction_entry" (dict "Root" $ "Action" "/transactions/update" "Submit" ($.T "Update Transaction") "Cancel" (highlight $.CancelTo $e.ID) "E" $e "Split" "toggle" "FixAccountID" 0 "FixPayeeID" 0 "FixCategoryID" 0 "PayeeList" "review-payee-options" "CatList" "review-category-options" "Date" "" "CatDefault" "" "ReturnTo" $.ReturnTo "Lines" (blankSplits 2))}}
+                    {{end}}
+                  </td>
+                </tr>
+              {{else}}
+                {{/* data-account-id is the reviewed account, not .AccountID:
+                     an incoming transfer's canonical ledger row belongs to the
+                     *sending* account, and this only feeds the fallback return
+                     URL, which should come back to the month under review. */}}
+                <tr{{if and $.Info.WriteEnabled .Editable (or (ne .Status "Void") $.Info.AllowTransactionDelete)}} class="actionable"{{if eq .Status "Void"}} data-voided="true"{{end}} data-trans-id="{{.ID}}" data-account-id="{{$selected.Account.ID}}" data-return-to="{{$.ReturnTo}}" data-split-count="{{.SplitCount}}"{{end}}>
+                  <td class="date">{{$.DateFmt .Date}}</td>
+                  <td>{{.Type}}</td>
+                  <td>{{payee .DisplayText}}</td>
+                  <td{{if .SplitHint}} class="split-cell" title="{{.SplitHint}}"{{end}}>{{.Category}}</td>
+                  <td>{{.Status}}</td>
+                  <td class="right amount {{if lt .DisplayAmt 0.0}}negative{{else}}positive{{end}}">{{money .DisplayAmt}}</td>
+                  <td>{{short .Notes}}</td>
+                </tr>
+              {{end}}
+            {{else}}
+              <tr><td colspan="7" class="empty">{{$.T "No transactions found for this account and month."}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+        {{if .Info.WriteEnabled}}
+          <ul id="row-menu" class="context-menu" hidden>
+            <li><button type="button" data-action="edit">{{.T "Edit transaction"}}</button></li>
+            <li><button type="button" data-action="void">{{.T "Void transaction"}}</button></li>
+            {{if .Info.AllowTransactionDelete}}<li><button type="button" data-action="delete">{{.T "Delete transaction"}}</button></li>{{end}}
+          </ul>
+        {{end}}
+        <details class="entry-panel" {{if .MonthlyReview.ImportCandidates}}open{{end}}>
+          <summary>{{.T "Statement Candidate Import"}}</summary>
+          {{if not .Info.AIAvailable}}<p class="notice">{{.T "AI-assisted import is not available. You can still import OFX and QIF downloads, attach statements and enter manual gap transactions."}}</p>{{end}}
+          {{if .MonthlyReview.ImportMessage}}<p class="notice">{{.MonthlyReview.ImportMessage}}</p>{{end}}
+          {{if .MonthlyReview.ImportCandidates}}
+            <form method="post" action="/review/import/commit" novalidate
+                  data-preflight="/review/import/validate"
+                  data-require-checked="approved"
+                  data-require-checked-message="{{.T "Select at least one candidate to import." "shown when the user tries to import bank statement transactions without ticking any of them"}}">
+              <input type="hidden" name="month" value="{{.MonthlyReview.Month}}">
+              <input type="hidden" name="account_id" value="{{$selected.Account.ID}}">
+              <input type="hidden" name="stmt_account_name" value="{{.MonthlyReview.StatementAccountName}}">
+              <input type="hidden" name="stmt_account_number" value="{{.MonthlyReview.StatementAccountNumber}}">
+              <input type="hidden" name="stmt_file" value="{{.MonthlyReview.StatementFile}}">
+              <label class="checkline candidate-toggle"><input type="checkbox" data-hide-duplicates checked> {{.T "Hide possible duplicates"}}</label>
+              <table class="candidate-table">
+                <thead><tr><th>{{.T "Import"}}</th><th>{{.T "Date"}}</th><th>{{.T "Type" "transaction type column heading"}}</th><th>{{.T "Payee / Account"}}</th><th>{{.T "Category"}}</th><th class="right">{{.T "Amount" "money amount column heading"}}</th><th>{{.T "Notes"}}</th><th>{{.T "Status" "transaction status column heading"}}</th></tr></thead>
+                <tbody>
+                  {{range $i, $c := .MonthlyReview.ImportCandidates}}
+                    <tr class="{{if eq $c.Type "Transfer"}}candidate-transfer {{end}}{{if $c.Error}}candidate-error{{else if $c.Duplicate}}candidate-duplicate{{else if $c.Warning}}candidate-warning{{end}}" data-candidate-row data-duplicate="{{if $c.Duplicate}}true{{else}}false{{end}}">
+                      <td>
+                        <div class="candidate-actions">
+                          <input type="checkbox" name="approved" value="{{$i}}" title="{{$.T "Import this candidate" "select a bank statement transaction candidate for import"}}" aria-label="{{$.T "Import this candidate" "select a bank statement transaction candidate for import"}}" {{if and $c.Selected (not $c.Duplicate)}}checked{{else}}data-user-toggled="true"{{end}}>
+                          {{if and $.Info.WriteEnabled (not $.MonthlyReview.NeedsAccountChoice) $c.ArchiveFile}}
+                            <button type="submit" class="candidate-dismiss" formaction="/review/candidate/dismiss" formnovalidate name="dismissed" value="{{$i}}" data-dismiss-candidate data-confirm="{{$.T "Dismiss this candidate permanently? It will no longer appear from this archived statement." "confirmation before permanently ignoring one extracted bank statement transaction candidate"}}" data-confirm-ok="{{$.T "Dismiss" "permanently ignore an extracted bank statement transaction candidate"}}">{{$.T "Dismiss" "permanently ignore an extracted bank statement transaction candidate"}}</button>
+                          {{end}}
+                        </div>
+                        {{/* This row's identity. Dismissing a candidate in place
+                             removes its row, shifting every later row's position
+                             in the submitted field arrays; row_index is what
+                             still ties "approved"/"dismissed" and the split
+                             suffixes back to the right row. */}}
+                        <input type="hidden" name="row_index" value="{{$i}}">
+                        <input type="hidden" name="duplicate_id" value="{{$c.DuplicateID}}">
+                        <input type="hidden" name="candidate_archive_file" value="{{$c.ArchiveFile}}">
+                        <input type="hidden" name="candidate_archive_index" value="{{$c.ArchiveCandidateIndex}}">
+                        <input type="hidden" name="candidate_archive_key" value="{{$c.ArchiveCandidateKey}}">
+                      </td>
+                      <td>
+                        <input name="date" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" value="{{$c.Date}}">
+                        <div class="candidate-messages" data-messages="general">{{range $c.GeneralMessages}}<small class="{{if .IsError}}error-text{{else}}warning-text{{end}}">{{.Text}}</small>{{end}}</div>
+                      </td>
+                      <td>
+                        <select name="type" data-candidate-type>
+                          <option value="Withdrawal" {{if eq $c.Type "Withdrawal"}}selected{{end}}>{{$.T "Withdrawal" "transaction type"}}</option>
+                          <option value="Deposit" {{if eq $c.Type "Deposit"}}selected{{end}}>{{$.T "Deposit" "transaction type"}}</option>
+                          <option value="TransferOut" {{if and (eq $c.Type "Transfer") (ne $c.TransferDirection "in")}}selected{{end}}>{{$.T "Transfer out" "transfer leaving the account being reviewed"}}</option>
+                          <option value="TransferIn" {{if and (eq $c.Type "Transfer") (eq $c.TransferDirection "in")}}selected{{end}}>{{$.T "Transfer in" "transfer entering the account being reviewed"}}</option>
+                        </select>
+                      </td>
+                      <td>
+                        <div class="candidate-payee"><input name="payee" list="review-payee-options" value="{{$c.Payee}}"></div>
+                        <div class="candidate-to-account">
+                          <select name="to_account_id">
+                            <option value="">{{$.T "Choose account"}}</option>
+                            {{range $.Accounts}}{{if and .Editable (ne .ID $selected.Account.ID)}}<option value="{{.ID}}" {{if eq .ID $c.ToAccountID}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}
+                          </select>
+                        </div>
+                        {{if $c.OriginalPayee}}<small class="candidate-source">{{$c.OriginalPayee}}</small>{{end}}
+                        <input type="hidden" name="original_payee" value="{{$c.OriginalPayee}}">
+                        <div class="candidate-messages" data-messages="payee">{{range $c.PayeeMessages}}<small class="{{if .IsError}}error-text{{else}}warning-text{{end}}">{{.Text}}</small>{{end}}</div>
+                      </td>
+                      <td class="candidate-category">
+                        <div class="candidate-category-input" data-candidate-category{{if $c.Splits}} hidden{{end}}>
+                          <input name="category" list="review-category-options" value="{{$c.Category}}">
+                        </div>
+                        {{template "split_editor" (dict "Root" $ "Suffix" (printf "_%d" $i) "CatList" "review-category-options" "Lines" (or $c.Splits (blankSplits 2)) "Class" "candidate-splits" "Hidden" (not $c.Splits) "Toggle" false)}}
+                        <label class="checkline candidate-split-toggle"><input type="checkbox" data-candidate-split-toggle {{if $c.Splits}}checked{{end}}> {{$.T "Split" "split transaction mode"}}</label>
+                        <div class="candidate-messages" data-messages="category">{{range $c.CategoryMessages}}<small class="{{if .IsError}}error-text{{else}}warning-text{{end}}">{{.Text}}</small>{{end}}</div>
+                      </td>
+                      <td>
+                        <input class="right" name="amount" type="text" inputmode="decimal" data-amount value="{{printf "%.2f" $c.Amount}}"{{if $c.Splits}} readonly{{end}} title="{{$.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}">
+                        <small class="candidate-statement-amount" data-statement-amount="{{printf "%.2f" $c.Amount}}" title="{{$.T "Amount on the statement"}}">{{money $c.Amount}}</small>
+                      </td>
+                      <td><input name="notes" value="{{$c.Notes}}"></td>
+                      <td>
+                        <select name="status">
+                          <option value="__blank" {{if eq $c.Status ""}}selected{{end}}>{{$.T "Unset" "transaction status"}}</option>
+                          <option value="Reconciled" {{if eq $c.Status "Reconciled"}}selected{{end}}>{{$.T "Reconciled" "transaction status"}}</option>
+                          <option value="Follow up" {{if eq $c.Status "Follow up"}}selected{{end}}>{{$.T "Follow up" "transaction status"}}</option>
+                        </select>
+                      </td>
+                    </tr>
+                  {{end}}
+                </tbody>
+              </table>
+              {{if .Info.WriteEnabled}}<button type="submit" data-import-submit>{{.T "Import Approved"}} <span data-import-count></span></button>{{else}}<p class="notice">{{.T "Import commit is disabled in read-only mode."}}</p>{{end}}
+            </form>
+          {{else}}
+            <p class="notice">{{.T "Import a statement from the Review navigation to populate candidates."}}</p>
+          {{end}}
+        </details>
+        {{if .MonthlyReview.Statements}}
+          <section class="statement-viewers">
+            {{range .MonthlyReview.Statements}}
+              {{if isPDF .File}}
+                <details class="entry-panel statement-viewer">
+                  <summary>{{$.T "View Statement"}}: {{if .OriginalName}}{{.OriginalName}}{{else}}{{.File}}{{end}}</summary>
+                  <iframe title="{{$.T "Statement PDF"}}" src="/review/statement?account_id={{.AccountID}}&file={{.File}}"></iframe>
+                </details>
+              {{end}}
+            {{end}}
+          </section>
+        {{end}}
+        <datalist id="review-payee-options">
+          {{range .Payees}}{{if selectablePayee .}}<option value="{{.Name}}" data-id="{{.ID}}"{{if gt .CategoryID 0}} data-category-id="{{.CategoryID}}"{{end}}></option>{{end}}{{end}}
+        </datalist>
+        <datalist id="review-category-options">
+          {{range .Categories}}{{if selectableCategory $.Info .}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}" data-id="{{.ID}}"></option>{{end}}{{end}}
+        </datalist>
+        <datalist id="review-category-parents">
+          {{range .Categories}}{{if and .Active (not .Parent) (ne .Name "Transfer")}}<option value="{{.Name}}"></option>{{end}}{{end}}
+        </datalist>
+        <dialog class="modal-panel" data-rules-modal data-dismiss-on-backdrop aria-labelledby="rules-modal-title">
+          <div class="modal-head">
+            <h2 id="rules-modal-title">{{.T "Learned Mappings" "title of the list of statement-description to payee/category rules the app learned from past imports"}}</h2>
+            <button type="button" data-rules-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+          </div>
+          <div class="modal-body">
+            <p>{{.T "Importing a statement remembers how each description was booked and pre-fills it next time. Fix a wrong mapping here, or delete it to forget it." "explanation of learned import rules"}}</p>
+            {{$canEdit := .Info.WriteEnabled}}
+            <table class="rules-table">
+              <thead><tr>
+                <th>{{.T "Statement description" "text that appears on the bank statement line"}}</th>
+                <th>{{.T "Type"}}</th>
+                <th>{{.T "Payee"}}</th>
+                <th>{{.T "Category"}}</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {{range $i, $r := .ImportRules}}
+                  <tr{{if .Ambiguous}} class="rule-ambiguous"{{end}}>
+                    {{if and $canEdit (not .Scoped)}}
+                      <td><input form="rule-save-{{$i}}" name="pattern" required value="{{.Pattern}}"></td>
+                      <td>
+                        <select form="rule-save-{{$i}}" name="type">
+                          <option value="" {{if eq .Type ""}}selected{{end}}>{{$.T "Any" "rule applies to any transaction type"}}</option>
+                          <option value="Withdrawal" {{if eq .Type "Withdrawal"}}selected{{end}}>{{$.T "Withdrawal" "transaction type"}}</option>
+                          <option value="Deposit" {{if eq .Type "Deposit"}}selected{{end}}>{{$.T "Deposit" "transaction type"}}</option>
+                        </select>
+                      </td>
+                      <td><input form="rule-save-{{$i}}" name="payee" list="review-payee-options" value="{{.Payee}}"></td>
+                      <td><input form="rule-save-{{$i}}" name="category" list="review-category-options" value="{{.Category}}"></td>
+                      <td class="rule-actions">
+                        <form id="rule-save-{{$i}}" method="post" action="/review/rules/save">
+                          <input type="hidden" name="month" value="{{$.MonthlyReview.Month}}">
+                          <input type="hidden" name="account_id" value="{{$selected.Account.ID}}">
+                          <input type="hidden" name="key_pattern" value="{{.Pattern}}">
+                          <button type="submit">{{$.T "Save"}}</button>
+                        </form>
+                        <form method="post" action="/review/rules/delete" data-confirm="{{$.T "Forget this learned mapping?" "confirmation before deleting a learned import rule"}}" data-confirm-ok="{{$.T "Delete" "confirm button that deletes a learned import rule"}}">
+                          <input type="hidden" name="month" value="{{$.MonthlyReview.Month}}">
+                          <input type="hidden" name="account_id" value="{{$selected.Account.ID}}">
+                          <input type="hidden" name="key_pattern" value="{{.Pattern}}">
+                          <button type="submit">{{$.T "Delete" "delete a learned import rule"}}</button>
+                        </form>
+                      </td>
+                    {{else}}
+                      <td>{{.Pattern}}{{if .AccountName}}<small class="muted"> · {{.AccountName}}</small>{{end}}</td>
+                      <td>{{if eq .Type "Transfer"}}{{if eq .Direction "in"}}{{$.T "Transfer in" "transfer entering the account being reviewed"}}{{else}}{{$.T "Transfer out" "transfer leaving the account being reviewed"}}{{end}}{{else}}{{.Type}}{{end}}</td>
+                      <td>{{if .Counterpart}}{{.Counterpart}}{{else}}{{.Payee}}{{end}}</td>
+                      <td>{{.Category}}</td>
+                      <td class="rule-actions">
+                        {{if $canEdit}}
+                          <form method="post" action="/review/rules/delete" data-confirm="{{$.T "Forget this learned mapping?" "confirmation before deleting a learned import rule"}}" data-confirm-ok="{{$.T "Delete" "confirm button that deletes a learned import rule"}}">
+                            <input type="hidden" name="month" value="{{$.MonthlyReview.Month}}">
+                            <input type="hidden" name="account_id" value="{{$selected.Account.ID}}">
+                            <input type="hidden" name="key_pattern" value="{{.Pattern}}">
+                            <input type="hidden" name="key_account_id" value="{{.AccountID}}">
+                            <button type="submit">{{$.T "Delete" "delete a learned import rule"}}</button>
+                          </form>
+                        {{end}}
+                      </td>
+                    {{end}}
+                  </tr>
+                  {{if .Ambiguous}}<tr class="rule-note"><td colspan="5"><small class="muted">{{$.T "This description was booked differently before, so nothing is pre-filled. Fill it in to teach it, or delete it to start over." "explanation of an ambiguous learned import rule"}}</small></td></tr>{{end}}
+                {{else}}
+                  <tr><td colspan="5" class="empty">{{.T "Nothing learned yet. Mappings are remembered when you import candidates."}}</td></tr>
+                {{end}}
+                {{if $canEdit}}
+                  <tr class="rule-add">
+                    <td><input form="rule-new" name="pattern" required placeholder="{{.T "New description" "placeholder: text from a bank statement line"}}"></td>
+                    <td>
+                      <select form="rule-new" name="type">
+                        <option value="">{{.T "Any" "rule applies to any transaction type"}}</option>
+                        <option value="Withdrawal">{{.T "Withdrawal" "transaction type"}}</option>
+                        <option value="Deposit">{{.T "Deposit" "transaction type"}}</option>
+                      </select>
+                    </td>
+                    <td><input form="rule-new" name="payee" list="review-payee-options"></td>
+                    <td><input form="rule-new" name="category" list="review-category-options"></td>
+                    <td class="rule-actions">
+                      <form id="rule-new" method="post" action="/review/rules/save">
+                        <input type="hidden" name="month" value="{{.MonthlyReview.Month}}">
+                        <input type="hidden" name="account_id" value="{{$selected.Account.ID}}">
+                        <button type="submit">{{.T "Add"}}</button>
+                      </form>
+                    </td>
+                  </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+        </dialog>
+      {{else}}
+        <div class="empty">{{.T "No editable accounts found."}}</div>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "budgets"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>{{.T "Budgets"}}</h2>
+        {{if .Info.WriteEnabled}}
+          <form method="post" action="/budgets/create-year">
+            <button type="submit">{{.T "New"}}</button>
+          </form>
+        {{end}}
+      </div>
+      <div class="entity-list">
+        {{range .BudgetYears}}
+          <a class="entity-link {{if and $.SelectedBudget (eq $.SelectedBudget.ID .ID)}}selected{{end}}" href="/budgets?budget_id={{.ID}}">
+            <span>
+              <strong>{{.Name}}</strong>
+              <small>{{.Count}} {{$.T "categories"}}</small>
+            </span>
+            <b>{{money .Total}}</b>
+          </a>
+        {{end}}
+      </div>
+    </aside>
+    <section class="content">
+      {{if .SelectedBudget}}
+        <div class="detail-head">
+          <div>
+            <h1>{{.SelectedBudget.Name}}</h1>
+            <p>{{.SelectedBudget.Count}} {{.T "budget categories"}}</p>
+          </div>
+          <div class="budget-header-chips">
+            <div class="budget-chip">
+              <span>{{.T "Income" "budgeted money received"}}</span>
+              <strong class="positive">{{money .SelectedBudget.Income}}</strong>
+            </div>
+            <div class="budget-chip">
+              <span>{{.T "Expenses" "budgeted money spent"}}</span>
+              <strong class="negative">{{money .SelectedBudget.Expenses}}</strong>
+            </div>
+            <div class="budget-chip">
+              <span>{{.T "Net" "net budget amount after income minus expenses"}}</span>
+              <strong class="{{if lt .SelectedBudget.Total 0.0}}negative{{else}}positive{{end}}">{{money .SelectedBudget.Total}}</strong>
+            </div>
+          </div>
+        </div>
+        <details class="mini-create">
+          <summary>{{.T "New Budget Category"}}</summary>
+          {{if .Info.WriteEnabled}}
+            <form method="post" action="/budgets/create">
+              <input type="hidden" name="budget_id" value="{{.SelectedBudget.ID}}">
+              <label>{{.T "Category"}} <input required name="category_text" list="budget-category-options" autocomplete="off"></label>
+              <label>{{.T "Period"}}
+                <select name="period" required>
+                  <option value="Daily">{{.T "Daily" "budget period"}}</option>
+                  <option value="Weekly">{{.T "Weekly" "budget period"}}</option>
+                  <option value="Bi-Weekly">{{.T "Bi-Weekly" "budget period"}}</option>
+                  <option value="Fortnightly">{{.T "Fortnightly" "budget period"}}</option>
+                  <option value="Monthly" selected>{{.T "Monthly" "budget period"}}</option>
+                  <option value="Bi-Monthly">{{.T "Bi-Monthly" "budget period"}}</option>
+                  <option value="Quarterly">{{.T "Quarterly" "budget period"}}</option>
+                  <option value="Half-Yearly">{{.T "Half-Yearly" "budget period"}}</option>
+                  <option value="Yearly">{{.T "Yearly" "budget period"}}</option>
+                </select>
+              </label>
+              <label>{{.T "Amount" "budgeted money amount"}} <input required class="right" name="amount" type="text" inputmode="decimal" data-amount value="0.00" title="{{.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+              <label>{{.T "Notes"}} <input name="notes" autocomplete="off"></label>
+              <button type="submit">{{.T "Add Category"}}</button>
+              <datalist id="budget-category-options">
+                {{range .Categories}}{{if and (selectableCategory $.Info .) (not (index $.BudgetCategoryIDs .ID))}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}"></option>{{end}}{{end}}
+              </datalist>
+            </form>
+          {{else}}
+            <p class="notice">{{.T "Read-only mode."}}</p>
+          {{end}}
+        </details>
+        <table class="budget-table">
+          <thead>
+            <tr>
+              <th>{{.T "Category"}}</th>
+              <th>{{.T "Period"}}</th>
+              <th class="right">{{.T "Amount" "budgeted money amount column heading"}}</th>
+              <th class="right">{{.T "Annual"}}</th>
+              <th class="right">{{.T "Current" "current period actual spending/income"}}</th>
+              <th class="right">{{.T "Previous" "previous period actual spending/income"}}</th>
+              {{if .Info.WriteEnabled}}<th class="compact-action-head"></th>{{end}}
+              <th>{{.T "Notes"}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .BudgetEntries}}
+              <tr>
+                <td>{{if .Parent}}{{.Parent}}: {{end}}{{.Category}}</td>
+                <td>
+                  {{if $.Info.WriteEnabled}}
+                    <select class="table-control" name="period" form="budget-update-{{.ID}}" required data-budget-autosave>
+                      <option value="Daily" {{if eq .Period "Daily"}}selected{{end}}>{{$.T "Daily" "budget period"}}</option>
+                      <option value="Weekly" {{if eq .Period "Weekly"}}selected{{end}}>{{$.T "Weekly" "budget period"}}</option>
+                      <option value="Bi-Weekly" {{if eq .Period "Bi-Weekly"}}selected{{end}}>{{$.T "Bi-Weekly" "budget period"}}</option>
+                      <option value="Fortnightly" {{if eq .Period "Fortnightly"}}selected{{end}}>{{$.T "Fortnightly" "budget period"}}</option>
+                      <option value="Monthly" {{if eq .Period "Monthly"}}selected{{end}}>{{$.T "Monthly" "budget period"}}</option>
+                      <option value="Bi-Monthly" {{if eq .Period "Bi-Monthly"}}selected{{end}}>{{$.T "Bi-Monthly" "budget period"}}</option>
+                      <option value="Quarterly" {{if eq .Period "Quarterly"}}selected{{end}}>{{$.T "Quarterly" "budget period"}}</option>
+                      <option value="Half-Yearly" {{if eq .Period "Half-Yearly"}}selected{{end}}>{{$.T "Half-Yearly" "budget period"}}</option>
+                      <option value="Yearly" {{if eq .Period "Yearly"}}selected{{end}}>{{$.T "Yearly" "budget period"}}</option>
+                    </select>
+                  {{else}}
+                    {{.Period}}
+                  {{end}}
+                </td>
+                <td class="right amount {{if lt .Amount 0.0}}negative{{else}}positive{{end}}">
+                  {{if $.Info.WriteEnabled}}
+                    <input class="table-control budget-amount-input right" name="amount" form="budget-update-{{.ID}}" type="text" inputmode="decimal" data-amount value="{{printf "%.2f" .Amount}}" data-budget-autosave title="{{$.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}">
+                  {{else}}
+                    {{money .Amount}}
+                  {{end}}
+                </td>
+                <td class="right amount {{if lt .Annual 0.0}}negative{{else}}positive{{end}}">{{money .Annual}}</td>
+                <td class="right amount {{if lt .Current 0.0}}negative{{else}}positive{{end}}">{{money .Current}}</td>
+                <td class="right amount {{if lt .Previous 0.0}}negative{{else}}positive{{end}}">{{money .Previous}}</td>
+                {{if $.Info.WriteEnabled}}
+                  <td class="right table-actions">
+                    <button class="icon-button ghost-icon danger-icon" type="submit" form="budget-delete-{{.ID}}" aria-label="{{$.T "Remove budget category"}}" title="{{$.T "Remove budget category"}}">&#128465;</button>
+                    <form id="budget-update-{{.ID}}" method="post" action="/budgets/update">
+                      <input type="hidden" name="budget_id" value="{{$.SelectedBudget.ID}}">
+                      <input type="hidden" name="budget_entry_id" value="{{.ID}}">
+                    </form>
+                    <form id="budget-delete-{{.ID}}" method="post" action="/budgets/delete">
+                      <input type="hidden" name="budget_id" value="{{$.SelectedBudget.ID}}">
+                      <input type="hidden" name="budget_entry_id" value="{{.ID}}">
+                    </form>
+                  </td>
+                {{end}}
+                <td>
+                  {{if $.Info.WriteEnabled}}
+                    <input class="table-control" name="notes" form="budget-update-{{.ID}}" value="{{.Notes}}" autocomplete="off" data-budget-autosave>
+                  {{else}}
+                    {{short .Notes}}
+                  {{end}}
+                </td>
+              </tr>
+            {{else}}
+              <tr><td colspan="{{if .Info.WriteEnabled}}9{{else}}8{{end}}" class="empty">{{$.T "No budget entries found."}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      {{else}}
+        <div class="empty">{{.T "No budgets found."}}</div>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "reports"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2>{{.T "Reports"}}</h2>
+      </div>
+      <div class="entity-list">
+        {{range .Reports.Nav}}
+          <a class="entity-link {{if eq $.Reports.SelectedID .ID}}selected{{end}}" href="{{.Href}}">
+            <span>
+              <strong>{{.Name}}</strong>
+              <small>{{.Description}}</small>
+            </span>
+          </a>
+        {{end}}
+      </div>
+    </aside>
+    <section class="content">
+      <div class="detail-head">
+        <div>
+          <h1>{{.Reports.SelectedName}}</h1>
+          <p>{{.Reports.SelectedHelp}}</p>
+        </div>
+      </div>
+      <form class="toolbar filters reports-toolbar" method="get" action="/reports" data-granularity="{{.Reports.Granularity}}">
+        <input type="hidden" name="report" value="{{.Reports.SelectedID}}">
+        {{if eq .Reports.Granularity "year"}}
+          <label>{{.T "From"}} <input type="text" inputmode="numeric" placeholder="YYYY" pattern="[0-9]{4}" name="from" value="{{yearOnly .Reports.From}}"></label>
+          <label>{{.T "To"}} <input type="text" inputmode="numeric" placeholder="YYYY" pattern="[0-9]{4}" name="to" value="{{yearOnly .Reports.To}}"></label>
+        {{else if eq .Reports.Granularity "month"}}
+          <label>{{.T "From"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM" pattern="[0-9]{4}-[0-9]{2}" name="from" value="{{yearMonth .Reports.From}}"></label>
+          <label>{{.T "To"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM" pattern="[0-9]{4}-[0-9]{2}" name="to" value="{{yearMonth .Reports.To}}"></label>
+        {{else}}
+          <label>{{.T "From"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="from" value="{{.Reports.From}}"></label>
+          <label>{{.T "To"}} <input type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="to" value="{{.Reports.To}}"></label>
+        {{end}}
+        <button type="submit">{{.T "Apply"}}</button>
+        {{if or (eq .Reports.SelectedID "categories") (eq .Reports.SelectedID "payees")}}
+          <label class="range-shortcut">{{.T "Top"}}
+            <select name="top_n" data-report-submit aria-label="{{.T "Top N"}}">
+              <option value="10" {{if eq .Reports.TopN 10}}selected{{end}}>10</option>
+              <option value="15" {{if eq .Reports.TopN 15}}selected{{end}}>15</option>
+              <option value="25" {{if eq .Reports.TopN 25}}selected{{end}}>25</option>
+              <option value="50" {{if eq .Reports.TopN 50}}selected{{end}}>50</option>
+            </select>
+          </label>
+        {{end}}
+        {{if ne .Reports.Granularity "year"}}
+          <label class="range-shortcut">{{.T "Past"}}
+            <select data-range-months aria-label="{{.T "Past N months"}}">
+              <option value="">…</option>
+              <option value="1">1 {{.T "month"}}</option>
+              <option value="3">3 {{.T "months"}}</option>
+              <option value="6">6 {{.T "months"}}</option>
+              <option value="9">9 {{.T "months"}}</option>
+              <option value="12">12 {{.T "months"}}</option>
+            </select>
+          </label>
+        {{end}}
+        {{if .Reports.Years}}
+          <label class="range-shortcut">{{.T "Year"}}
+            <select data-range-year aria-label="{{.T "Full year"}}">
+              <option value="">…</option>
+              {{range .Reports.Years}}<option value="{{.}}">{{.}}</option>{{end}}
+            </select>
+          </label>
+        {{end}}
+        <a class="button-link" href="/reports?report={{.Reports.SelectedID}}&reset=1">{{.T "Reset"}}</a>
+      </form>
+      {{if eq .Reports.SelectedID "overview"}}
+        <div class="metrics">
+          <div><span>{{.T "Income" "money received during the reporting period"}}</span><strong class="positive">{{money .Reports.Income}}</strong></div>
+          <div><span>{{.T "Expenses" "money spent during the reporting period"}}</span><strong class="negative">{{money .Reports.Expenses}}</strong></div>
+          <div><span>{{.T "Net" "net amount after income minus expenses"}}</span><strong class="{{if lt .Reports.Net 0.0}}negative{{else}}positive{{end}}">{{money .Reports.Net}}</strong></div>
+          <div><span>{{.T "Transactions"}}</span><strong>{{.Reports.Transactions}}</strong></div>
+        </div>
+        <section class="report-grid">
+          <div class="report-table">{{template "report_monthly_trend" .}}</div>
+          <div class="report-side">
+            <div class="report-table">{{template "report_top_categories" .}}</div>
+            <div class="report-table">{{template "report_top_payees" .}}</div>
+          </div>
+        </section>
+      {{else if eq .Reports.SelectedID "trends"}}
+        <div class="report-table">{{template "report_spending_trends" .}}</div>
+      {{else if eq .Reports.SelectedID "categories"}}
+        <div class="report-table">{{template "report_top_categories" .}}</div>
+      {{else if eq .Reports.SelectedID "payees"}}
+        <div class="report-table">{{template "report_top_payees" .}}</div>
+      {{else if eq .Reports.SelectedID "anomalies"}}
+        <div class="report-table">{{template "report_anomalies" .}}</div>
+      {{else if eq .Reports.SelectedID "budget-overruns"}}
+        <div class="report-table">{{template "report_budget_overruns" .}}</div>
+      {{else if eq .Reports.SelectedID "recurring"}}
+        <div class="report-table">{{template "report_recurring" .}}</div>
+      {{else}}
+        <div class="empty">{{.T "This report is ready in the navigation and will be implemented next."}}</div>
+      {{end}}
+      {{if .Info.WriteEnabled}}
+        {{/* One menu for the whole page: every report marks its transaction rows
+             "actionable", including the contributing rows cloned into the detail
+             modals, and app.js wires the menu at document level. */}}
+        <ul id="row-menu" class="context-menu" hidden>
+          <li><button type="button" data-action="edit">{{.T "Edit transaction"}}</button></li>
+          <li><button type="button" data-action="void">{{.T "Void transaction"}}</button></li>
+          {{if .Info.AllowTransactionDelete}}<li><button type="button" data-action="delete">{{.T "Delete transaction"}}</button></li>{{end}}
+        </ul>
+      {{end}}
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "audit"}}
+{{template "head" .}}
+  <main class="single">
+    <div class="detail-head">
+      <div>
+        <h1>{{.T "Audit Log" "page title for the record of changes MMXC made"}}</h1>
+        <p>{{.Audit.Total}} {{.T "entries" "number of audit log entries"}}{{if .Audit.Path}} · {{.Audit.Path}}{{if .Audit.Encrypted}} · {{.T "encrypted" "marks a password-protected database in the database picker"}}{{end}}{{end}}</p>
+      </div>
+      <div class="summary-chips">
+        <div class="summary-chip">
+          <span>{{.T "Record" "label for how much detail the audit log keeps"}}</span>
+          <b>{{.Audit.Level}}</b>
+        </div>
+      </div>
+    </div>
+    {{if eq .Audit.Level "off"}}
+      <p class="notice">{{.T "The audit log is switched off. Turn it on in Settings to start recording changes." "shown on the audit page when auditing is disabled"}}</p>
+    {{end}}
+    {{if .Audit.Status}}
+      <p class="notice">{{.T "The audit log could not be opened:" "shown when the audit database failed to open"}} {{.Audit.Status}}</p>
+    {{end}}
+    <form class="toolbar filters" method="get" action="/audit">
+      <label>{{.T "Search"}} <input name="q" value="{{.Audit.Query}}" autocomplete="off"></label>
+      <label>{{.T "Limit" "maximum number of rows to show"}} <input type="number" min="1" step="1" name="limit" value="{{.Audit.Limit}}"></label>
+      <button type="submit">{{.T "Apply" "button applying the filters"}}</button>
+      <a class="button-link" href="/audit">{{.T "Clear"}}</a>
+    </form>
+    <table>
+      <thead><tr><th>{{.T "Date"}}</th><th>{{.T "Time" "time of day column heading"}}</th>{{if .Info.AuthEnabled}}<th>{{.T "User" "the person who made the change"}}</th>{{end}}<th>{{.T "Action" "what was changed"}}</th><th>{{.T "Detail" "the recorded detail of a change"}}</th></tr></thead>
+      <tbody>
+        {{range .Audit.Records}}
+          <tr>
+            <td class="date">{{$.DateFmt .Date}}</td>
+            <td>{{.Time}}</td>
+            {{if $.Info.AuthEnabled}}<td>{{.Actor}}</td>{{end}}
+            <td>{{.Action}}</td>
+            <td>{{.Detail}}</td>
+          </tr>
+        {{else}}
+          <tr><td colspan="5" class="empty">{{$.T "No audit entries found."}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "report_monthly_trend"}}
+  <h2>{{.T "Monthly Trend"}}</h2>
+  <table>
+    <thead><tr><th>{{.T "Month"}}</th><th class="right">{{.T "Income" "money received during the month"}}</th><th class="right">{{.T "Expenses" "money spent during the month"}}</th><th class="right">{{.T "Net" "net amount after income minus expenses"}}</th></tr></thead>
+    <tbody>
+      {{range .Reports.Monthly}}
+        <tr>
+          <td>{{.Month}}</td>
+          <td class="right amount positive">{{money .Income}}</td>
+          <td class="right amount negative">{{money .Expenses}}</td>
+          <td class="right amount {{if lt .Net 0.0}}negative{{else}}positive{{end}}">{{money .Net}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="4" class="empty">{{$.T "No transactions found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+{{end}}
+
+{{define "report_top_categories"}}
+  <h2>{{.T "Top Expense Categories"}}</h2>
+  <table>
+    <thead><tr><th>{{.T "Category"}}</th><th class="right">{{.T "Amount" "money amount column heading"}}</th><th class="right">{{.T "Count" "number of transactions"}}</th></tr></thead>
+    <tbody>
+      {{range $i, $r := .Reports.TopCategories}}
+        <tr class="selectable-row" tabindex="0" data-category-open="category-detail-{{$i}}">
+          <td>{{.Name}}</td><td class="right amount negative">{{money .Amount}}</td><td class="right">{{.Count}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="3" class="empty">{{$.T "No expenses found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{range $i, $r := .Reports.TopCategories}}
+    <div id="category-detail-{{$i}}" hidden>
+      <h2>{{$r.Name}}</h2>
+      <p>{{money $r.Amount}} {{$.T "across"}} {{$r.Count}} {{$.T "transactions"}}</p>
+      <table>
+        <thead><tr><th>{{$.T "Date"}}</th><th>{{$.T "Account"}}</th><th>{{$.T "Payee"}}</th><th class="right">{{$.T "Amount" "money amount column heading"}}</th><th>{{$.T "Notes"}}</th></tr></thead>
+        <tbody>
+          {{range $r.Rows}}
+            <tr{{if and $.Info.WriteEnabled .Editable}} class="actionable" data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+              <td class="date">{{$.DateFmt .Date}}</td>
+              <td>{{.Account}}</td>
+              <td>{{payee .Payee}}</td>
+              <td class="right amount negative">{{money .Amount}}</td>
+              <td>{{short .Notes}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  <dialog class="modal-panel" data-category-modal data-dismiss-on-backdrop aria-labelledby="category-modal-title">
+    <div class="modal-head">
+      <h2 id="category-modal-title">{{.T "Category Transactions"}}</h2>
+      <button type="button" data-category-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body" data-category-modal-body></div>
+  </dialog>
+{{end}}
+
+{{define "report_spending_trends"}}
+  <h2>{{.T "Category Spending Changes"}}</h2>
+  <table>
+    <thead><tr>
+      <th>{{.T "Category"}}</th>
+      {{range .Reports.TrendPrevMonths}}<th class="right">{{.}}</th>{{end}}
+      <th class="right">{{.T "Change" "change in spending amount versus previous period"}}</th>
+      <th class="right">{{.Reports.TrendCurrentMonth}}</th>
+    </tr></thead>
+    <tbody>
+      {{range $i, $t := .Reports.Trends}}
+        <tr class="selectable-row" tabindex="0" data-trend-open="trend-detail-{{$i}}">
+          <td>{{.Category}}</td>
+          {{range .Previous}}<td class="right amount negative">{{money .}}</td>{{end}}
+          <td class="right amount {{if lt .Change 0.0}}positive{{else}}negative{{end}}">{{money .Change}}</td>
+          <td class="right amount negative">{{money .Amount}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="6" class="empty">{{$.T "No noteworthy category changes found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{range $i, $t := .Reports.Trends}}
+    <div id="trend-detail-{{$i}}" hidden>
+      <h2>{{$t.Category}}</h2>
+      <p>{{$.Reports.TrendCurrentMonth}} · {{money $t.Amount}} · {{$.T "change"}} {{money $t.Change}} {{$.T "vs previous month"}}</p>
+      <table>
+        <thead><tr><th>{{$.T "Date"}}</th><th>{{$.T "Account"}}</th><th>{{$.T "Payee"}}</th><th class="right">{{$.T "Amount" "money amount column heading"}}</th><th>{{$.T "Notes"}}</th></tr></thead>
+        <tbody>
+          {{range $t.Rows}}
+            <tr{{if and $.Info.WriteEnabled .Editable}} class="actionable" data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+              <td class="date">{{$.DateFmt .Date}}</td>
+              <td>{{.Account}}</td>
+              <td>{{payee .Payee}}</td>
+              <td class="right amount negative">{{money .Amount}}</td>
+              <td>{{short .Notes}}</td>
+            </tr>
+          {{else}}
+            <tr><td colspan="5" class="empty">{{$.T "No transactions in"}} {{$.Reports.TrendCurrentMonth}}.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  <dialog class="modal-panel" data-trend-modal data-dismiss-on-backdrop aria-labelledby="trend-modal-title">
+    <div class="modal-head">
+      <h2 id="trend-modal-title">{{.T "Contributing Transactions"}}</h2>
+      <button type="button" data-trend-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body" data-trend-modal-body></div>
+  </dialog>
+{{end}}
+
+{{define "report_top_payees"}}
+  <h2>{{.T "Top Expense Payees"}}</h2>
+  <table>
+    <thead><tr><th>{{.T "Payee"}}</th><th class="right">{{.T "Amount" "money amount column heading"}}</th><th class="right">{{.T "Count" "number of transactions"}}</th></tr></thead>
+    <tbody>
+      {{range $i, $r := .Reports.TopPayees}}
+        <tr class="selectable-row" tabindex="0" data-payee-open="payee-detail-{{$i}}">
+          <td>{{payee .Name}}</td><td class="right amount negative">{{money .Amount}}</td><td class="right">{{.Count}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="3" class="empty">{{$.T "No expenses found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{range $i, $r := .Reports.TopPayees}}
+    <div id="payee-detail-{{$i}}" hidden>
+      <h2>{{payee $r.Name}}</h2>
+      <p>{{money $r.Amount}} {{$.T "across"}} {{$r.Count}} {{$.T "transactions"}}</p>
+      <table>
+        <thead><tr><th>{{$.T "Date"}}</th><th>{{$.T "Account"}}</th><th>{{$.T "Category"}}</th><th class="right">{{$.T "Amount" "money amount column heading"}}</th><th>{{$.T "Notes"}}</th></tr></thead>
+        <tbody>
+          {{range $r.Rows}}
+            <tr{{if and $.Info.WriteEnabled .Editable}} class="actionable" data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+              <td class="date">{{$.DateFmt .Date}}</td>
+              <td>{{.Account}}</td>
+              <td>{{.Category}}</td>
+              <td class="right amount negative">{{money .Amount}}</td>
+              <td>{{short .Notes}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  <dialog class="modal-panel" data-payee-modal data-dismiss-on-backdrop aria-labelledby="payee-modal-title">
+    <div class="modal-head">
+      <h2 id="payee-modal-title">{{.T "Payee Transactions"}}</h2>
+      <button type="button" data-payee-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body" data-payee-modal-body></div>
+  </dialog>
+{{end}}
+
+{{define "report_anomalies"}}
+  <h2>{{.T "Unusual Expenses"}}</h2>
+  <table>
+    <thead><tr><th>{{.T "Date"}}</th><th>{{.T "Account"}}</th><th>{{.T "Payee"}}</th><th>{{.T "Category"}}</th><th>{{.T "Notes"}}</th><th class="right">{{.T "Amount" "money amount column heading"}}</th><th class="right">{{.T "Typical" "typical transaction amount"}}</th><th class="right">{{.T "Samples" "number of transactions sampled"}}</th></tr></thead>
+    <tbody>
+      {{range $i, $a := .Reports.Anomalies}}
+        <tr class="selectable-row{{if and $.Info.WriteEnabled .Editable}} actionable{{end}}" tabindex="0" data-anomaly-open="anomaly-detail-{{$i}}"{{if and $.Info.WriteEnabled .Editable}} data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+          <td class="date">{{$.DateFmt .Date}}</td>
+          <td>{{.Account}}</td>
+          <td>{{payee .Payee}}</td>
+          <td>{{.Category}}</td>
+          <td>{{short .Notes}}</td>
+          <td class="right amount negative">{{money .Amount}}</td>
+          <td class="right amount">{{money .Average}}</td>
+          <td class="right">{{.Count}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="8" class="empty">{{$.T "No unusual expenses found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{range $i, $a := .Reports.Anomalies}}
+    <div id="anomaly-detail-{{$i}}" hidden>
+      <h2>{{payee $a.Payee}}</h2>
+      <p>{{$a.Category}} · {{$.T "unusual"}} {{money $a.Amount}} {{$.T "on"}} {{$.DateFmt $a.Date}} · {{$.T "typical"}} {{money $a.Average}} {{$.T "across"}} {{$a.Count}} {{$.T "transactions"}}</p>
+      <table>
+        <thead><tr><th>{{$.T "Date"}}</th><th>{{$.T "Account"}}</th><th class="right">{{$.T "Amount" "money amount column heading"}}</th><th>{{$.T "Notes"}}</th></tr></thead>
+        <tbody>
+          {{range $a.Rows}}
+            <tr{{if and $.Info.WriteEnabled .Editable}} class="actionable" data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+              <td class="date">{{$.DateFmt .Date}}</td>
+              <td>{{.Account}}</td>
+              <td class="right amount negative">{{money .Amount}}</td>
+              <td>{{short .Notes}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  <dialog class="modal-panel" data-anomaly-modal data-dismiss-on-backdrop aria-labelledby="anomaly-modal-title">
+    <div class="modal-head">
+      <h2 id="anomaly-modal-title">{{.T "Contributing Transactions"}}</h2>
+      <button type="button" data-anomaly-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body" data-anomaly-modal-body></div>
+  </dialog>
+{{end}}
+
+{{define "report_budget_overruns"}}
+  <h2>{{.T "Budget Overruns"}}</h2>
+  <table>
+    <thead><tr><th>{{.T "Year"}}</th><th>{{.T "Category"}}</th><th class="right">{{.T "Budget" "planned spending amount"}}</th><th class="right">{{.T "Actual" "actual spending amount"}}</th><th class="right">{{.T "Overrun" "amount over budget"}}</th><th class="right">{{.T "Usage" "budget usage percentage"}}</th></tr></thead>
+    <tbody>
+      {{range $i, $b := .Reports.BudgetOverruns}}
+        <tr class="selectable-row" tabindex="0" data-budget-open="budget-detail-{{$i}}">
+          <td>{{.Year}}</td>
+          <td>{{if .Parent}}{{.Parent}}: {{end}}{{.Category}}</td>
+          <td class="right amount">{{money .Budget}}</td>
+          <td class="right amount negative">{{money .Actual}}</td>
+          <td class="right amount negative">{{money .Overrun}}</td>
+          <td class="right">{{printf "%.0f%%" .Usage}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="6" class="empty">{{$.T "No budget overruns found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{range $i, $b := .Reports.BudgetOverruns}}
+    <div id="budget-detail-{{$i}}" hidden>
+      <h2>{{$b.Category}}</h2>
+      <p>{{$b.Year}} · {{$.T "actual"}} {{money $b.Actual}} · {{$.T "budget"}} {{money $b.Budget}} · {{$.T "overrun"}} {{money $b.Overrun}}</p>
+      <table>
+        <thead><tr><th>{{$.T "Date"}}</th><th>{{$.T "Account"}}</th><th>{{$.T "Type" "transaction type column heading"}}</th><th class="right">{{$.T "Actual Contribution" "transaction amount contributing to budget actuals"}}</th><th>{{$.T "Notes"}}</th></tr></thead>
+        <tbody>
+          {{range $b.Rows}}
+            <tr{{if and $.Info.WriteEnabled .Editable}} class="actionable" data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+              <td class="date">{{$.DateFmt .Date}}</td>
+              <td>{{.Account}}</td>
+              <td>{{.Type}}</td>
+              <td class="right amount {{if lt .Amount 0.0}}positive{{else}}negative{{end}}">{{money .Amount}}</td>
+              <td>{{short .Notes}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  <dialog class="modal-panel" data-budget-modal data-dismiss-on-backdrop aria-labelledby="budget-modal-title">
+    <div class="modal-head">
+      <h2 id="budget-modal-title">{{.T "Actual Transactions"}}</h2>
+      <button type="button" data-budget-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body" data-budget-modal-body></div>
+  </dialog>
+{{end}}
+
+{{define "report_recurring"}}
+  <h2>{{.T "Recurring Transactions"}}</h2>
+  <table>
+    <thead><tr><th>{{.T "Expected" "expected next transaction date"}}</th><th>{{.T "Last" "last transaction date"}}</th><th>{{.T "Account"}}</th><th>{{.T "Payee"}}</th><th>{{.T "Category"}}</th><th>{{.T "Type" "transaction type column heading"}}</th><th class="right">{{.T "Average" "average transaction amount"}}</th><th>{{.T "Cadence"}}</th><th class="right">{{.T "Count" "number of transactions"}}</th></tr></thead>
+    <tbody>
+      {{range $i, $r := .Reports.Recurring}}
+        <tr class="selectable-row" tabindex="0" data-recurring-open="recurring-detail-{{$i}}">
+          <td class="date">{{$.DateFmt .NextDate}}</td>
+          <td class="date">{{$.DateFmt .LastDate}}</td>
+          <td>{{.Account}}</td>
+          <td>{{payee .Payee}}</td>
+          <td>{{.Category}}</td>
+          <td>{{.Type}}</td>
+          <td class="right amount {{if eq .Type "Withdrawal"}}negative{{else}}positive{{end}}">{{money .Amount}}</td>
+          <td>{{.Repeat}}</td>
+          <td class="right">{{.Count}}</td>
+        </tr>
+      {{else}}
+        <tr><td colspan="9" class="empty">{{$.T "No recurring transactions found."}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{range $i, $r := .Reports.Recurring}}
+    <div id="recurring-detail-{{$i}}" hidden>
+      <h2>{{payee $r.Payee}}</h2>
+      <p>{{$r.Account}} · {{$r.Category}} · {{$r.Type}} · {{$r.Repeat}} · {{$r.Count}} {{$.T "transactions"}}</p>
+      <table>
+        <thead><tr><th>{{$.T "Date"}}</th><th class="right">{{$.T "Amount" "money amount column heading"}}</th><th>{{$.T "Notes"}}</th></tr></thead>
+        <tbody>
+          {{range $r.Transactions}}
+            <tr{{if and $.Info.WriteEnabled .Editable}} class="actionable" data-trans-id="{{.TransID}}" data-account-id="{{.AccountID}}" data-edit-url="/accounts?account_id={{.AccountID}}" data-return-to="{{$.Reports.ReturnTo}}"{{end}}>
+              <td class="date">{{$.DateFmt .Date}}</td>
+              <td class="right amount {{if eq $r.Type "Withdrawal"}}negative{{else}}positive{{end}}">{{money .Amount}}</td>
+              <td>{{short .Notes}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{end}}
+  <dialog class="modal-panel" data-recurring-modal data-dismiss-on-backdrop aria-labelledby="recurring-modal-title">
+    <div class="modal-head">
+      <h2 id="recurring-modal-title">{{.T "Recurring Transactions"}}</h2>
+      <button type="button" data-recurring-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
+    </div>
+    <div class="modal-body" data-recurring-modal-body></div>
+  </dialog>
+{{end}}
+
+{{define "settings"}}
+{{template "head" .}}
+  <main class="layout">
+    <aside class="sidebar settings-sidebar">
+      <div class="side-head">
+        <h2>{{.T "Settings"}}</h2>
+      </div>
+      <a class="entity-link selected" href="#status"><span><strong>{{.T "Status"}}</strong><small>{{.T "Read-only runtime info"}}</small></span></a>
+      <div class="group-label">{{.T "Editable"}}</div>
+      <a class="entity-link" href="#storage"><span><strong>{{.T "Storage"}}</strong><small>{{.T "Database, backups, statements"}}</small></span></a>
+      <a class="entity-link" href="#audit"><span><strong>{{.T "Audit Log" "settings section for the record of changes MMXC makes"}}</strong><small>{{.T "Record of changes" "settings sidebar subtitle for the audit log section"}}</small></span></a>
+      <a class="entity-link" href="#behavior"><span><strong>{{.T "Behavior"}}</strong><small>{{.T "Navigation and entry rules"}}</small></span></a>
+      <a class="entity-link" href="#appearance"><span><strong>{{.T "Appearance"}}</strong><small>{{.T "Theme"}}</small></span></a>
+      <a class="entity-link" href="#llm"><span><strong>LLM</strong><small>{{.T "LLM endpoint and models"}}</small></span></a>
+      <a class="entity-link" href="#translation"><span><strong>{{.T "Translation"}}</strong><small>{{.T "UI language settings"}}</small></span></a>
+    </aside>
+    <section class="content settings-content">
+      <div class="detail-head" id="status">
+        <div>
+          <h1>{{.T "Settings"}}</h1>
+          <p>{{if .Info.ConfigPath}}{{.T "Config file"}} {{.Info.ConfigPath}}{{else}}{{.T "Config file not recorded for this process"}}{{end}}</p>
+        </div>
+      </div>
+      <section class="settings-section">
+        <div class="settings-section-head">
+          <div>
+            <h2>{{.T "Status"}}</h2>
+          </div>
+        </div>
+        <dl class="settings">
+          <dt>{{.T "Database"}}</dt><dd>{{.Info.Path}}</dd>
+          <dt>{{.T "Base Currency"}}</dt><dd>{{.Info.BaseCurrency}}</dd>
+          <dt>{{.T "Compatibility"}}</dt><dd>{{.T .Info.Status "database compatibility status"}} · <span class="hint">MMEX {{.Info.MMEXVersion}} · {{.T "data version" "label for the MMEX database DATAVERSION number"}} {{.Info.DataVersion}}</span></dd>
+          <dt>{{.T "AI"}}</dt><dd>{{.T .Info.AIStatus "AI runtime status"}}{{if .Info.AIDetail}} · {{.T .Info.AIDetail "AI runtime status detail"}}{{end}}</dd>
+          <dt>{{.T "Backups"}}</dt><dd>{{.Info.BackupCount}} {{.T "files"}}{{if .Info.BackupSize}} · {{.Info.BackupSize}}{{end}}</dd>
+          {{/* The auth gate is a process-start setting, so there is nothing to
+               toggle here; point at the config file instead. */}}
+          <dt>{{.T "Auth Gate"}}</dt><dd>{{if .Info.AuthEnabled}}{{.T "Enabled"}}{{else}}{{.T "Disabled"}} · <span class="hint">{{.T "Enable Pocket ID / OIDC login with auth_enabled in the config file" "settings hint; \"Pocket ID\", \"OIDC\" and the config key auth_enabled are names, keep them verbatim"}}</span>{{end}}</dd>
+        </dl>
+      </section>
+      {{/* Creating a database is its own POST, so it cannot live inside the
+           settings form below (forms do not nest). It sits here, next to the
+           Status rows naming the open file, and writes into the same scan
+           folder the Storage picker lists. */}}
+      <details class="mini-create settings-create-db">
+        <summary>{{.T "New Database"}}</summary>
+        <form method="post" action="/settings/database/create">
+          <label>{{.T "File Name"}} <input required name="db_name" placeholder="household.mmb" autocomplete="off"></label>
+          <label>{{.T "Base Currency"}}
+            <select name="currency">
+              {{/* The list is ordered with the default first, which is the
+                   option a select shows when none is marked selected. */}}
+              {{range .Info.SeedCurrencies}}<option value="{{.Code}}">{{.Code}} — {{.Name}}</option>{{end}}
+            </select>
+          </label>
+          <label class="checkline"><input type="checkbox" name="open_now" value="true" checked> {{.T "Open the new database after creating it"}}</label>
+          <button type="submit">{{.T "Create Database"}}</button>
+          <p class="hint">{{.T "The file is created in the database folder below, seeded with common currencies and the default categories." "hint under the form that creates a new empty database file"}}</p>
+        </form>
+      </details>
+      {{/* Encrypting is a copy, not a switch: the open database is read and a
+           converted copy is written next to it, so the original stays usable. */}}
+      <details class="mini-create settings-create-db">
+        <summary>{{.T "Encrypt or Decrypt Database" "summary of the form writing an encrypted or plain copy of the open database"}}</summary>
+        <form method="post" action="/settings/database/convert">
+          <label>{{.T "Copy Type" "label for choosing an encrypted or plain database copy"}}
+            <select name="direction">
+              <option value="encrypt">{{.T "Encrypted copy (.mmbx)" "option writing a password-protected copy"}}</option>
+              <option value="decrypt">{{.T "Plain copy (.mmb, opens in MMEX)" "option writing an unencrypted copy"}}</option>
+            </select>
+          </label>
+          <label>{{.T "File Name"}} <input required name="db_name" placeholder="household.mmbx" autocomplete="off"></label>
+          <label>{{.T "Password" "label for the password protecting an encrypted database copy"}} <input type="password" name="password" autocomplete="new-password"></label>
+          <label class="checkline"><input type="checkbox" name="open_now" value="true"> {{.T "Open the copy after writing it"}}</label>
+          <button type="submit">{{.T "Write Copy" "button creating the converted database copy"}}</button>
+          <p class="hint">{{.T "The copy is written into the database folder below and the open database is only read. An encrypted database cannot be opened by MMEX, and a lost password cannot be recovered." "hint under the encrypt or decrypt form"}}</p>
+        </form>
+      </details>
+      <form class="settings-form" method="post" action="/settings/update" data-settings-form>
+        <section class="settings-section" id="storage">
+          <div class="settings-section-head">
+            <div>
+              <h2>{{.T "Storage"}}</h2>
+              <p class="section-desc">{{.T "Where the database, backups, and statement files live, and how long backups are kept."}}</p>
+              {{/* The scan folder belongs with the Database picker it feeds, so
+                   Status no longer carries a separate Database Folder row. */}}
+              <p class="hint">{{.T "The Database list shows every .mmb and encrypted .mmbx file found in this folder:" "settings hint before the folder path that is scanned for databases"}} {{.Info.DBScanPath}}</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label>{{.T "Database"}}
+              <select name="selected_db_path">
+                {{range .Info.DBFiles}}<option value="{{.Path}}" {{if eq $.Info.Path .Path}}selected{{end}}>{{.Name}} ({{if .WriteEnabled}}{{$.T "read-write"}}{{else}}{{$.T "read-only"}}{{end}}{{if .Encrypted}}, {{$.T "encrypted" "marks a password-protected database in the database picker"}}{{end}})</option>{{end}}
+              </select>
+            </label>
+            <label>{{.T "Database Password" "settings label for the password that unlocks an encrypted database"}} <input type="password" name="db_password" autocomplete="off" placeholder="{{.T "Only needed for an encrypted database" "placeholder for the encrypted-database password field"}}"></label>
+            <label>{{.T "Backup Directory"}} <input required name="backup_dir" value="{{.Info.BackupDir}}" autocomplete="off"></label>
+            <label>{{.T "Statement Directory"}} <input required name="statement_dir" value="{{.Info.StatementDir}}" autocomplete="off"></label>
+            <label>{{.T "Backup Retention Days"}} <input required type="number" min="1" step="1" name="backup_retention_days" value="{{.Info.BackupRetentionDays}}"></label>
+            <label>{{.T "Minimum Backups To Keep"}} <input required type="number" min="1" step="1" name="backup_retention_min_count" value="{{.Info.BackupRetentionMinCount}}"></label>
+          </div>
+          <label class="checkline"><input type="checkbox" name="backup_prune_enabled" value="true" {{if .Info.BackupPruneEnabled}}checked{{end}}> {{.T "Prune old MMXC database backups after each successful backup"}}</label>
+        </section>
+        {{/* The audit log gets its own section rather than a checkbox among the
+             behavior toggles: it records what MMXC changed, so the user should
+             be able to see that it exists, where it is kept, and how much of
+             their financial detail it holds. */}}
+        <section class="settings-section" id="audit">
+          <div class="settings-section-head">
+            <div>
+              <h2>{{.T "Audit Log" "settings section for the record of changes MMXC makes"}}</h2>
+              <p class="section-desc">{{.T "A record of every change MMXC makes. It is kept in its own database beside your data, never in the system log, and is encrypted together with an encrypted database." "description of the audit log settings section"}}</p>
+              {{if .Info.AuditStatus}}<p class="hint">{{.T "The audit log is switched off because it could not be opened:" "shown when the audit database failed to open"}} {{.Info.AuditStatus}}</p>{{end}}
+              {{if .Info.AuditPath}}<p class="hint">{{.Info.AuditCount}} {{.T "entries" "number of audit log entries"}} · {{.Info.AuditPath}}{{if .Info.AuditEncrypted}} · {{.T "encrypted" "marks a password-protected database in the database picker"}}{{end}} · <a href="/audit">{{.T "View" "link opening the audit log page"}}</a></p>{{end}}
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label>{{.T "Record" "label for how much detail the audit log keeps"}}
+              <select name="audit_log">
+                <option value="off" {{if eq .Info.AuditLog "off"}}selected{{end}}>{{.T "Nothing" "audit level recording nothing at all"}}</option>
+                <option value="actions" {{if eq .Info.AuditLog "actions"}}selected{{end}}>{{.T "Actions only (no names or amounts)" "audit level recording the action and row ids but no personal detail"}}</option>
+                <option value="detailed" {{if eq .Info.AuditLog "detailed"}}selected{{end}}>{{.T "Full detail (names, amounts, sign-ins)" "audit level recording the sensitive detail too"}}</option>
+              </select>
+            </label>
+            <label>{{.T "Audit Directory" "settings label for the folder holding the audit database"}} <input required name="audit_dir" value="{{.Info.AuditDir}}" autocomplete="off"></label>
+            <label>{{.T "Audit Retention Days" "settings label for how long audit entries are kept"}} <input required type="number" min="0" step="1" name="audit_retention_days" value="{{.Info.AuditRetentionDays}}"></label>
+          </div>
+          <p class="hint">{{.T "Zero keeps every entry forever. Full detail writes payee names, amounts and account numbers into the log, so leave it off unless you need it." "hint under the audit log settings"}}</p>
+        </section>
+        <section class="settings-section" id="behavior">
+          <div class="settings-section-head">
+            <div>
+              <h2>{{.T "Behavior"}}</h2>
+              <p class="section-desc">{{.T "Navigation defaults and rules applied when entering new transactions."}}</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label>{{.T "Start Page"}}
+              <select name="app_start_page">
+                <option value="ask" {{if eq .Info.AppStartPage "ask"}}selected{{end}}>{{.T "Ask" "start page option"}}</option>
+                <option value="reports" {{if eq .Info.AppStartPage "reports"}}selected{{end}}>{{.T "Reports"}}</option>
+                <option value="accounts" {{if eq .Info.AppStartPage "accounts"}}selected{{end}}>{{.T "Accounts"}}</option>
+              </select>
+            </label>
+          </div>
+          <div class="toggle-grid">
+            <label class="checkline"><input type="checkbox" name="allow_top_level_categories" value="true" {{if .Info.AllowTopLevelCategories}}checked{{end}}> {{.T "Allow top-level categories for new transactions"}}</label>
+            <label class="checkline"><input type="checkbox" name="allow_transaction_delete" value="true" {{if .Info.AllowTransactionDelete}}checked{{end}}> {{.T "Allow permanent deletion of transactions" "setting: when on, transactions can be deleted outright instead of only being marked void"}}</label>
+            <label class="checkline"><input type="checkbox" name="hide_inactive_items" value="true" {{if .Info.HideInactiveItems}}checked{{end}}> {{.T "Hide inactive categories and payees"}}</label>
+            <label class="checkline"><input type="checkbox" name="show_account_balance" value="true" {{if .Info.ShowAccountBalance}}checked{{end}}> {{.T "Show running account balance in transaction lists"}}</label>
+          </div>
+        </section>
+        <section class="settings-section" id="appearance">
+          <div class="settings-section-head">
+            <div>
+              <h2>{{.T "Appearance"}}</h2>
+              <p class="section-desc">{{.T "Theme and light/dark mode for the interface."}}</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label>{{.T "Theme"}}
+              <select name="theme">
+                {{range .Info.Themes}}<option value="{{.Name}}" {{if eq $.Info.Theme .Name}}selected{{end}}>{{.Label}}</option>{{end}}
+              </select>
+            </label>
+            <label>{{.T "Mode"}}
+              <select name="theme_mode">
+                <option value="system" {{if eq .Info.ThemeMode "system"}}selected{{end}}>{{.T "System"}}</option>
+                <option value="light" {{if eq .Info.ThemeMode "light"}}selected{{end}}>{{.T "Light"}}</option>
+                <option value="dark" {{if eq .Info.ThemeMode "dark"}}selected{{end}}>{{.T "Dark"}}</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint">{{.T "Themes are loaded from CSS files in data/themes. Add or edit files there, then reload Settings to choose them."}}</p>
+        </section>
+        <section class="settings-section" id="llm" data-llm-settings>
+          <div class="settings-section-head">
+            <div>
+              <h2>LLM</h2>
+              <p class="section-desc">{{.T "OpenAI-compatible endpoint and models used for statement import and the assistant."}}</p>
+            </div>
+            <button type="button" data-llm-models>{{.T "Query Models"}}</button>
+          </div>
+          <div class="settings-grid">
+            <label>{{.T "Base URL"}} <input required type="url" name="llm_base_url" value="{{.Info.LLMBaseURL}}" autocomplete="off" data-llm-url></label>
+            <label>{{.T "API Key"}} <input type="password" name="llm_api_key" value="" autocomplete="off" placeholder="{{if .Info.LLMAPIKeySet}}{{.T "stored — leave blank to keep" "placeholder telling the user a secret is already saved"}}{{else}}{{.T "none" "placeholder meaning no API key is saved"}}{{end}}"></label>
+            <label>{{.T "Model" "settings field: the LLM model name"}}
+              <input name="llm_model" value="{{.Info.LLMModel}}" list="llm-model-options" autocomplete="off" data-llm-model>
+            </label>
+            <label>{{.T "Timeout Seconds"}} <input required type="number" min="1" step="1" name="llm_timeout_seconds" value="{{.Info.LLMTimeoutSeconds}}"></label>
+            <label>{{.T "Reasoning Effort"}}
+              <select name="llm_reasoning_effort">
+                <option value="none" {{if eq .Info.LLMReasoningEffort "none"}}selected{{end}}>none</option>
+                <option value="low" {{if eq .Info.LLMReasoningEffort "low"}}selected{{end}}>low</option>
+                <option value="medium" {{if eq .Info.LLMReasoningEffort "medium"}}selected{{end}}>medium</option>
+                <option value="high" {{if eq .Info.LLMReasoningEffort "high"}}selected{{end}}>high</option>
+                <option value="max" {{if eq .Info.LLMReasoningEffort "max"}}selected{{end}}>max</option>
+              </select>
+            </label>
+            <label>{{.T "Prompt Directory" "settings field: folder holding user-edited LLM prompt files"}} <input name="prompt_dir" value="{{.Info.PromptDir}}" autocomplete="off" placeholder="{{.T "(built-in prompts only)" "placeholder: no folder set, so the prompts shipped with the app are used"}}"></label>
+          </div>
+          <div class="toggle-grid">
+            {{if .Info.LLMAPIKeySet}}<label class="checkline"><input type="checkbox" name="llm_api_key_clear" value="true"> {{.T "Clear the stored API key"}}</label>{{end}}
+            <label class="checkline"><input type="checkbox" name="llm_resolve" value="true" {{if .Info.LLMResolveEnabled}}checked{{end}}> {{.T "Resolve uncertain payees and categories with LLM"}}</label>
+          </div>
+          <datalist id="llm-model-options"></datalist>
+          <p class="hint" data-llm-status>{{.T "Model lists are loaded from the configured endpoint. Any model name can be typed, even one the endpoint does not list."}}</p>
+          <p class="hint">{{.T "One model handles Ask and statement import. To import statements from images or screenshots, choose a multimodal model that accepts images." "settings hint about the LLM model choice"}}</p>
+          <p class="hint">{{.T "To tune the Ask or statement-import instructions for your model or bank, download the built-in prompt, edit it, and save it in the prompt directory under the same name. Edits apply to the next request." "explains how to override the LLM prompt guidance with a text file"}}</p>
+          <ul class="hint">
+            {{range .Info.Prompts}}
+            <li>
+              {{if eq .Name "assistant"}}{{$.T "Ask" "name of the AI assistant page"}}{{else}}{{$.T "Statement import" "LLM extraction of transactions from an uploaded bank statement"}}{{end}}:
+              {{if .Custom}}{{$.T "custom" "the prompt was replaced by the user's own file"}} ({{.Path}}){{else}}{{$.T "built-in" "the prompt shipped with the app is used"}}{{end}}
+              · <a href="/settings/prompt?name={{.Name}}" download>{{$.T "Download built-in" "link to download the prompt shipped with the app"}} ({{.Name}}.txt)</a>
+              {{if .Warning}}<span class="warning-text">{{.Warning}}</span>{{end}}
+            </li>
+            {{end}}
+          </ul>
+          <p class="hint">{{.T "The context window is a server-side setting, not a request parameter. For Ollama, start the server with OLLAMA_CONTEXT_LENGTH set high enough for a full statement." "explains that the LLM context window is configured on the model server, not in MMXC"}}</p>
+        </section>
+        <section class="settings-section" id="translation" data-llm-settings>
+          <div class="settings-section-head">
+            <div>
+              <h2>{{.T "Translation"}}</h2>
+              <p class="section-desc">{{.T "Optional AI translation of the interface into another language."}}</p>
+            </div>
+            <button type="button" data-llm-models>{{.T "Query Models"}}</button>
+          </div>
+          <div class="settings-grid">
+            <label>{{.T "UI Language"}}
+              <select name="translation_language">
+                <option value="en" {{if eq .Info.TranslationLanguage "en"}}selected{{end}}>English (no translation)</option>
+                <option value="ar" {{if eq .Info.TranslationLanguage "ar"}}selected{{end}}>Arabic</option>
+                <option value="cs" {{if eq .Info.TranslationLanguage "cs"}}selected{{end}}>Czech</option>
+                <option value="da" {{if eq .Info.TranslationLanguage "da"}}selected{{end}}>Danish</option>
+                <option value="de" {{if eq .Info.TranslationLanguage "de"}}selected{{end}}>German</option>
+                <option value="el" {{if eq .Info.TranslationLanguage "el"}}selected{{end}}>Greek</option>
+                <option value="es" {{if eq .Info.TranslationLanguage "es"}}selected{{end}}>Spanish</option>
+                <option value="fi" {{if eq .Info.TranslationLanguage "fi"}}selected{{end}}>Finnish</option>
+                <option value="fr" {{if eq .Info.TranslationLanguage "fr"}}selected{{end}}>French</option>
+                <option value="hu" {{if eq .Info.TranslationLanguage "hu"}}selected{{end}}>Hungarian</option>
+                <option value="it" {{if eq .Info.TranslationLanguage "it"}}selected{{end}}>Italian</option>
+                <option value="ja" {{if eq .Info.TranslationLanguage "ja"}}selected{{end}}>Japanese</option>
+                <option value="ko" {{if eq .Info.TranslationLanguage "ko"}}selected{{end}}>Korean</option>
+                <option value="nl" {{if eq .Info.TranslationLanguage "nl"}}selected{{end}}>Dutch</option>
+                <option value="no" {{if eq .Info.TranslationLanguage "no"}}selected{{end}}>Norwegian</option>
+                <option value="pl" {{if eq .Info.TranslationLanguage "pl"}}selected{{end}}>Polish</option>
+                <option value="pt" {{if eq .Info.TranslationLanguage "pt"}}selected{{end}}>Portuguese</option>
+                <option value="ro" {{if eq .Info.TranslationLanguage "ro"}}selected{{end}}>Romanian</option>
+                <option value="ru" {{if eq .Info.TranslationLanguage "ru"}}selected{{end}}>Russian</option>
+                <option value="sv" {{if eq .Info.TranslationLanguage "sv"}}selected{{end}}>Swedish</option>
+                <option value="tr" {{if eq .Info.TranslationLanguage "tr"}}selected{{end}}>Turkish</option>
+                <option value="uk" {{if eq .Info.TranslationLanguage "uk"}}selected{{end}}>Ukrainian</option>
+                <option value="zh" {{if eq .Info.TranslationLanguage "zh"}}selected{{end}}>Chinese (Simplified)</option>
+              </select>
+            </label>
+            <label>{{.T "Translation Model"}}
+              <input name="translation_model" value="{{.Info.TranslationModel}}" list="llm-model-options" autocomplete="off" placeholder="{{.T "(disabled)"}}" data-llm-model>
+            </label>
+            <label>{{.T "Translation Cache Directory"}} <input required name="translation_dir" value="{{.Info.TranslationDir}}" autocomplete="off"></label>
+          </div>
+          <p class="hint" data-llm-status>{{.T "Model lists are loaded from the endpoint configured in the LLM section. Leave this blank to disable translation."}}</p>
+          <p class="hint">{{.T "Select a language other than English and a translation model to enable AI-powered UI translation. Translations are generated on first use and cached in the cache directory. Edit the JSON files there to fix any incorrect translations."}}</p>
+        </section>
+        <div class="settings-actions">
+          <button type="submit">{{.T "Save Settings"}}</button>
+        </div>
+      </form>
+    </section>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "signed_out"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.T .Title "page title"}} - MMXC</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/theme.css">
+</head>
+<body>
+  <main class="single signed-out">
+    <div class="brand">MMXC</div>
+    <p>{{.T "You've been signed out."}}</p>
+    <p><a class="button-link" href="/auth/login">{{.T "Sign in"}}</a></p>
+  </main>
+</body>
+</html>
+{{end}}
+
+{{define "error"}}
+{{template "head" .}}
+  <main class="single">
+    <h1>{{.T .Title "page title"}}</h1>
+    <p class="error">{{.Error}}</p>
+  </main>
+{{template "foot" .}}
+{{end}}
+
+{{define "foot"}}
+</body>
+</html>
+{{end}}
+
+{{/*
+  tx_datalists emits the shared payee/category comboboxes referenced by every
+  transaction_entry on a page (ids tx-payee-options / tx-category-options).
+  Include it exactly once per page that renders transaction forms.
+  Each option carries data-id so app.js can resolve the typed text back to a row
+  id; payee options additionally carry data-category-id (the payee's default
+  category), which app.js uses to fill an empty Category on selection. The
+  review page repeats the same two lists under review-*-options.
+*/}}
+{{define "tx_datalists"}}
+  <datalist id="tx-payee-options">
+    {{range .Payees}}{{if selectablePayee .}}<option value="{{.Name}}" data-id="{{.ID}}"{{if gt .CategoryID 0}} data-category-id="{{.CategoryID}}"{{end}}></option>{{end}}{{end}}
+  </datalist>
+  <datalist id="tx-category-options">
+    {{range .Categories}}{{if selectableCategory $.Info .}}<option value="{{if .Parent}}{{.Parent}}: {{end}}{{.Name}}" data-id="{{.ID}}"></option>{{end}}{{end}}
+  </datalist>
+{{end}}
+
+{{/*
+  split_editor renders one split-line table for a transaction. Dict keys:
+    Suffix  - appended to every field name ("" for single forms, "_<i>" for the
+              review candidate rows that share one form and need unique names)
+    CatList - id of the category <datalist> to bind the comboboxes to
+    Lines   - []splitLine to pre-render (use (blankSplits 2) for an empty form)
+    Class   - extra class on the wrapper ("wide" in forms, "candidate-splits"
+              for the review candidate table — CSS keys off the latter)
+    Hidden  - render the editor hidden initially (app.js reveals it when split
+              mode is toggled on); avoids a flash before scripts run
+    Toggle  - render the split_mode checkbox inside the tools bar (single forms
+              own their toggle; review candidates toggle from the category cell)
+  The running total and amount sync are driven by app.js (refreshSplitEditor).
+*/}}
+{{define "split_editor"}}
+<div class="split-editor {{.Class}}" data-split-editor data-split-suffix="{{.Suffix}}"{{if .Hidden}} hidden{{end}}>
+  <div class="split-lines" data-split-lines>
+    {{range .Lines}}
+      <div class="split-line">
+        <input type="search" name="split_category_text{{$.Suffix}}" list="{{$.CatList}}" data-combobox="split_category_id{{$.Suffix}}" value="{{.Category}}" placeholder="{{$.Root.T "Category"}}" autocomplete="off">
+        <input type="hidden" name="split_category_id{{$.Suffix}}" value="{{if gt .CategoryID 0}}{{.CategoryID}}{{end}}">
+        <input type="text" inputmode="decimal" data-amount name="split_amount{{$.Suffix}}" value="{{if gt .Amount 0.0}}{{printf "%.2f" .Amount}}{{end}}" placeholder="{{$.Root.T "Amount" "split transaction line money amount"}}" title="{{$.Root.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}">
+        <input type="text" name="split_notes{{$.Suffix}}" value="{{.Notes}}" placeholder="{{$.Root.T "Notes"}}">
+        <button type="button" data-split-remove>{{$.Root.T "Remove"}}</button>
+      </div>
+    {{end}}
+  </div>
+  <div class="split-tools">
+    {{if .Toggle}}<label class="checkline split-toggle"><input type="hidden" name="split_mode" value="false"><input type="checkbox" name="split_mode" value="true"> {{$.Root.T "Split" "split mode checkbox"}}</label>{{end}}
+    <button type="button" data-split-add>{{$.Root.T "Add Split"}}</button>
+    <span data-split-total></span>
+  </div>
+</div>
+{{end}}
+
+{{/*
+  transaction_entry is the single reusable transaction create/edit form used on
+  every page (accounts, categories, payees, review). Dict keys:
+    Root          - the page data ($) for .Accounts/.Payees/.Categories/.Info
+    Action,Submit - form post target and submit-button label
+    Cancel        - cancel link href ("" omits the link)
+    E             - *transaction to edit (omit for a create form)
+    Split         - "toggle" (checkbox, default off) or "fixed" (editing an
+                    existing split parent: amount/type locked, no category input)
+    FixAccountID/FixPayeeID/FixCategoryID - when > 0 that field is contextually
+                    fixed (rendered as a hidden input instead of a chooser)
+    PayeeList,CatList - datalist ids for the comboboxes
+    Date          - default value for the date field on create forms
+    CatDefault    - default category text on create (used by the payee page)
+    ReturnTo      - value for the hidden return_to field ("" omits it)
+    Lines         - split lines to seed the editor with
+*/}}
+{{define "transaction_entry"}}
+{{$root := .Root}}
+{{$ex := .FixAccountID}}{{if and (eq $ex 0) .E}}{{$ex = .E.AccountID}}{{end}}
+<form class="entry-grid" method="post" action="{{.Action}}" data-transaction-form>
+  {{if .E}}<input type="hidden" name="trans_id" value="{{.E.ID}}">
+  <input type="hidden" name="scroll" value="{{$root.Scroll}}">{{end}}
+  {{if .ReturnTo}}<input type="hidden" name="return_to" value="{{.ReturnTo}}">{{end}}
+  {{if gt .FixAccountID 0}}
+    <input type="hidden" name="account_id" value="{{.FixAccountID}}">
+  {{else}}
+    <label>{{$root.T "Account"}}
+      <select name="account_id" required>
+        {{range $root.Accounts}}{{if .Editable}}<option value="{{.ID}}" {{if eq .ID $ex}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}
+      </select>
+    </label>
+  {{end}}
+  <label>{{$root.T "Date"}} <input required type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" name="date" value="{{if .E}}{{.E.Date}}{{else}}{{.Date}}{{end}}"></label>
+  {{if eq .Split "fixed"}}
+    <input type="hidden" name="type" value="{{.E.Type}}">
+    <input type="hidden" name="split_mode" value="true">
+    <label>{{$root.T "Type" "transaction type field label"}} <input disabled value="{{.E.Type}}"></label>
+    <label>{{$root.T "Amount" "transaction money amount field label"}} <input disabled name="amount_display" value="{{printf "%.2f" .E.Amount}}"></label>
+  {{else}}
+    <label>{{$root.T "Type" "transaction type field label"}}
+      <select name="type" required>
+        <option value="Withdrawal" {{if and .E (eq .E.Type "Withdrawal")}}selected{{end}}>{{$root.T "Withdrawal" "transaction type"}}</option>
+        <option value="Deposit" {{if and .E (eq .E.Type "Deposit")}}selected{{end}}>{{$root.T "Deposit" "transaction type"}}</option>
+        <option value="Transfer" {{if and .E (eq .E.Type "Transfer")}}selected{{end}}>{{$root.T "Transfer" "transaction type"}}</option>
+      </select>
+    </label>
+    <label>{{$root.T "To Account"}}
+      <select name="to_account_id">
+        <option value="">{{$root.T "For transfers"}}</option>
+        {{range $root.Accounts}}{{if and .Editable (ne .ID $ex)}}<option value="{{.ID}}" {{if and $root.EditTransaction (eq .ID $root.EditTransaction.ToAccountID)}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}
+      </select>
+    </label>
+    <label>{{$root.T "Amount" "transaction money amount field label"}} <input required type="text" inputmode="decimal" data-amount name="amount" value="{{if .E}}{{printf "%.2f" .E.Amount}}{{end}}" title="{{$root.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}"></label>
+  {{end}}
+  {{if gt .FixPayeeID 0}}
+    <input type="hidden" name="payee_id" value="{{.FixPayeeID}}">
+  {{else}}
+    <label>{{$root.T "Payee"}}
+      <input type="search" name="payee_text" list="{{.PayeeList}}" data-combobox="payee_id" value="{{if .E}}{{.E.Payee}}{{end}}" autocomplete="off">
+      <input type="hidden" name="payee_id" value="{{if and .E (gt .E.PayeeID 0)}}{{.E.PayeeID}}{{end}}">
+    </label>
+  {{end}}
+  {{if ne .Split "fixed"}}
+    {{if gt .FixCategoryID 0}}
+      <input type="hidden" name="category_id" value="{{.FixCategoryID}}">
+    {{else}}
+      <label>{{$root.T "Category"}}
+        <input type="search" name="category_text" list="{{.CatList}}" data-combobox="category_id" value="{{if .E}}{{.E.Category}}{{else}}{{.CatDefault}}{{end}}" autocomplete="off">
+        <input type="hidden" name="category_id" value="{{if and .E (gt .E.CategoryID 0)}}{{.E.CategoryID}}{{end}}">
+      </label>
+    {{end}}
+  {{end}}
+  {{template "split_editor" (dict "Root" $root "Suffix" "" "CatList" .CatList "Lines" .Lines "Class" "wide" "Hidden" false "Toggle" (ne .Split "fixed"))}}
+  <label>{{$root.T "Status" "transaction status field label"}}
+    <select name="status">
+      <option value="__blank" {{if or (not .E) (eq .E.Status "")}}selected{{end}}>{{$root.T "Unset" "transaction status"}}</option>
+      <option value="Reconciled" {{if and .E (eq .E.Status "Reconciled")}}selected{{end}}>{{$root.T "Reconciled" "transaction status"}}</option>
+      <option value="Follow up" {{if and .E (eq .E.Status "Follow up")}}selected{{end}}>{{$root.T "Follow up" "transaction status"}}</option>
+      {{if .E}}<option value="Duplicate" {{if eq .E.Status "Duplicate"}}selected{{end}}>{{$root.T "Duplicate" "transaction status"}}</option>{{end}}
+    </select>
+  </label>
+  <label class="wide">{{$root.T "Notes"}} <input type="text" name="notes" value="{{if .E}}{{.E.Notes}}{{end}}"></label>
+  <button type="submit">{{.Submit}}</button>
+  {{if .Cancel}}<a class="button-link" href="{{.Cancel}}">{{$root.T "Cancel"}}</a>{{end}}
+</form>
+{{end}}

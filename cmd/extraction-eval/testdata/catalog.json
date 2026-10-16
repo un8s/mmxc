@@ -1,0 +1,15 @@
+{
+  "categories": [
+    "Food: Groceries",
+    "Food: Dining Out",
+    "Income: Salary",
+    "Income: Interest",
+    "Housing: Mortgage"
+  ],
+  "payees": [
+    "Greenleaf Grocers",
+    "Contoso Ltd",
+    "Blue Peak Mortgage",
+    "Fern Cafe"
+  ]
+}

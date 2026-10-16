@@ -1,0 +1,34 @@
+{
+  "accounts": [
+    {
+      "account_name": "Everyday Savings",
+      "account_number": "****1111",
+      "period_start": "2025-03-01",
+      "period_end": "2025-03-31",
+      "closing_date": "2025-03-31",
+      "closing_balance": 525.00,
+      "has_closing": true,
+      "transactions": [
+        {
+          "date": "2025-03-15",
+          "type": "Deposit",
+          "amount": 25.00,
+          "description": "INTEREST PAID",
+          "payee": "Northwind Savings Bank",
+          "category": "Income: Interest"
+        }
+      ]
+    },
+    {
+      "account_name": "Future Fund",
+      "account_number": "****2222",
+      "period_start": "2025-03-01",
+      "period_end": "2025-03-31",
+      "closing_date": "2025-03-31",
+      "closing_balance": 0.01,
+      "has_closing": true,
+      "transactions": []
+    }
+  ],
+  "transactions": []
+}

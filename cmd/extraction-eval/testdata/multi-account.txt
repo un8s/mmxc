@@ -1,0 +1,18 @@
+NORTHWIND SAVINGS BANK
+Combined Statement Period: 2025-03-01 to 2025-03-31
+Client Number: 8675309
+
+Account at a Glance
+Everyday Savings ****1111  525.00
+Future Fund ****2222         0.01
+
+The Details - Everyday Savings - ****1111
+Date        Description             Deposits   Balance
+2025-03-01  Opening Balance                     500.00
+2025-03-15  INTEREST PAID                25.00   525.00
+2025-03-31  Closing Balance                     525.00
+
+The Details - Future Fund - ****2222
+Date        Description             Amount     Balance
+2025-03-01  Opening Balance              0.00      0.01
+2025-03-31  Closing Balance              0.00      0.01
