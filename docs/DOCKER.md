@@ -6,8 +6,8 @@ there is no C toolchain and the same Dockerfile builds for `amd64` and `arm64`.
 These instructions work with Docker or Podman (`podman` and `podman compose` are
 drop-in replacements for the commands below).
 
-A multi-arch image is published as `ghcr.io/un8s/mmxc` (tags `latest` and the
-`YY.M.D` version). You can also build it yourself from this repository.
+There is no published image; you build it from this repository. Rebuilding
+after an update also picks up current Alpine and Poppler security fixes.
 
 ## What you provide at runtime
 
@@ -35,29 +35,28 @@ A multi-arch image is published as `ghcr.io/un8s/mmxc` (tags `latest` and the
 ```sh
 cp mmxc.example.yaml mmxc.yaml          # defaults use ./data; edit as needed
 mkdir -p data && cp /path/to/your.mmb data/
-docker compose up -d
+docker compose up -d --build
 ```
 
 Then open <http://localhost:8080>. With no database in `data/`, MMXC shows a
 first-run page that creates a new one.
 
-`docker-compose.yml` in the repository root pulls `ghcr.io/un8s/mmxc:latest`, maps
-port 8080, and mounts `./mmxc.yaml` and `./data`. Set `TZ` in it to your timezone
-so dates render in local time. To run your own build instead, uncomment its
-`build: .` line and use `docker compose up -d --build`.
+`docker-compose.yml` in the repository root builds the image, maps port 8080, and
+mounts `./mmxc.yaml` and `./data`. Set `TZ` in it to your timezone so dates
+render in local time.
 
 Without compose:
 
 ```sh
+docker build -t mmxc:latest .
 docker run -d --name mmxc --restart unless-stopped -p 8080:8080 \
   -e TZ=Europe/Berlin \
   -v "$PWD/mmxc.yaml:/app/mmxc.yaml" \
   -v "$PWD/data:/app/data" \
-  ghcr.io/un8s/mmxc:latest
+  mmxc:latest
 ```
 
-Building from source (`docker build -t mmxc:latest .`) works the same way; use
-`mmxc:latest` as the image name. To build for another architecture (needs buildx):
+To build for another architecture (needs buildx):
 
 ```sh
 docker buildx build --platform linux/arm64 -t mmxc:latest --load .
@@ -186,8 +185,7 @@ to* the public bundle, so public HTTPS keeps working:
 
 Alternatively, bake it into the image (permanent, but needs a rebuild when the CA
 rotates) by adding this to the runtime stage of the `Dockerfile`, before
-`USER mmxc`, then building your own image (uncomment `build: .` in the compose
-file):
+`USER mmxc`, and rebuild:
 
 ```dockerfile
 COPY certs/your-ca.crt /usr/local/share/ca-certificates/your-ca.crt
@@ -197,11 +195,9 @@ RUN update-ca-certificates
 ## Updating
 
 ```sh
-docker compose pull
-docker compose up -d
+git pull
+docker compose up -d --build
 ```
-
-With your own build, `git pull` and `docker compose up -d --build` instead.
 
 Your data lives in `./data`, so recreating the container is safe. MMXC takes a
 full backup of the database into `backup_dir` before every change it makes.

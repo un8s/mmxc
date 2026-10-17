@@ -176,15 +176,9 @@ page load in a new language is slow. See [docs/i18n.md](docs/i18n.md).
 ## Deployment
 
 MMXC ships as a single static binary in a small Alpine image (pure-Go SQLite, no
-C toolchain; `amd64` and `arm64`), published as `ghcr.io/un8s/mmxc`:
-
-```sh
-docker run -d --name mmxc -p 8080:8080 \
-  -v "$PWD/mmxc.yaml:/app/mmxc.yaml" -v "$PWD/data:/app/data" \
-  ghcr.io/un8s/mmxc:latest
-```
-
-Or build it yourself with `docker build -t mmxc .`. See
+C toolchain; `amd64` and `arm64`). There is no published image: build it from
+this repository with `docker compose up -d --build` (or `docker build -t mmxc .`),
+so every rebuild also picks up current base-image security fixes. See
 **[docs/DOCKER.md](docs/DOCKER.md)** for the Docker / Podman setup, including the
 `docker-compose.yml` in the repository root.
 

@@ -27,7 +27,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 # --- Runtime stage -----------------------------------------------------------
 FROM alpine:3.20
 
-# The source label links the image pushed to ghcr.io to its GitHub repository.
+# OCI metadata. No image is published (see README), but the source label would
+# link one pushed to ghcr.io to its GitHub repository.
 LABEL org.opencontainers.image.source="https://github.com/un8s/mmxc" \
       org.opencontainers.image.description="Self-hosted web app for Money Manager Ex databases" \
       org.opencontainers.image.licenses="MIT"
