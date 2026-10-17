@@ -62,6 +62,7 @@
       <button type="button" data-version-close aria-label="{{.T "Close"}}">{{.T "Close"}}</button>
     </div>
     <div class="modal-body">
+      <p class="version-source">{{.T "Source code" "label for a link to the project's source repository"}}: <a href="https://github.com/un8s/mmxc" target="_blank" rel="noopener noreferrer">github.com/un8s/mmxc</a></p>
       <ul class="version-history">
         {{range .Info.History}}
           <li><span class="vh-date">{{.Date}}</span> <span class="vh-subject">{{.Subject}}</span></li>

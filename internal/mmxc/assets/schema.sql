@@ -4,9 +4,13 @@
 -- reproduce to read and write .mmb SQLite files interchangeably with MMEX. The
 -- content here is the functional schema only -- the table, column, type and
 -- constraint definitions required for that compatibility -- formatted for MMXC
--- and carrying no descriptive prose from upstream. The advisory check that warns
--- when the upstream MMEX schema adds or drops elements MMXC relies on lives in
--- schema_monitor.go and is independent of this file.
+-- and carrying no descriptive prose from upstream.
+--
+-- It is embedded as schemaSQL (ui.go) and used to create every new database
+-- (newdb.go) and the synthetic test fixture (fixture_test.go). An existing
+-- database is never checked against this file: checkCompatibility (main.go)
+-- only checks its DATAVERSION and that the tables and columns in requiredSchema
+-- are present.
 
 CREATE TABLE INFOTABLE_V1(
         INFOID integer not null primary key,

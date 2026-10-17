@@ -327,7 +327,7 @@ var unlockDoneTemplate = template.Must(template.New("unlockDone").Parse(`<!docty
  padding:2rem;max-width:34rem;width:100%;box-shadow:0 6px 22px var(--shadow-card)}
  h1{margin:0 0 .25rem;font-size:1.3rem;letter-spacing:0}
  p{color:var(--muted);line-height:1.5}code{color:var(--text)}
- a{color:var(--accent)}</style></head><body>
+ a{color:var(--accent);text-decoration:none;font-weight:600}a:hover{text-decoration:underline}</style></head><body>
 <div><h1>Database unlocked</h1>
 <p>Opening <code>{{.}}</code>. Starting MMXC...</p>
 <p>If this page does not refresh, <a href="/">reload</a>.</p></div>

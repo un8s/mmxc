@@ -1,3 +1,6 @@
+2026-10-16	Describe what schema.sql is used for now that the schema monitor is gone
+2026-10-16	Link the source repository from Version History; style all text links alike
+2026-10-16	Update release
 2026-10-16	Build the container image from source instead of publishing one
 2026-10-16	Update release
 2026-10-16	Point db_path examples at the folder and document HTTPS LLM endpoints
@@ -25,6 +28,3 @@
 2026-10-12	Let the Review candidates form create new Parent: Sub categories
 2026-10-12	Add a Learned Mappings modal to Review
 2026-10-12	Reset a review candidate's category when its payee is changed
-2026-09-26	Update release
-2026-09-18	Keep the audit log in its own encrypted database
-2026-09-15	Delete the dead import-rule legacy fields

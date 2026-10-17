@@ -139,6 +139,10 @@ body[data-global-busy="true"] {
 	gap: 12px;
 }
 h1, h2 { margin: 0; letter-spacing: 0; }
+/* Text links. Styled components (nav pills, button-links, sidebar entries,
+   icons) all carry a class, even an empty one, and keep their own look. */
+a:not([class]) { color: var(--accent); text-decoration: none; font-weight: 600; }
+a:not([class]):hover { text-decoration: underline; }
 h1 { font-size: 24px; }
 h2 { font-size: 16px; }
 button, input, select, textarea {
@@ -1115,14 +1119,6 @@ tr.candidate-transfer .candidate-split-toggle {
 	display: grid;
 	gap: 2px;
 }
-.statement-list a {
-	color: var(--accent);
-	text-decoration: none;
-	font-weight: 600;
-}
-.statement-list a:hover {
-	text-decoration: underline;
-}
 .statement-list .muted {
 	color: var(--muted);
 	font-size: 12px;
@@ -1443,6 +1439,12 @@ dialog::backdrop {
 }
 .app-dialog.is-alert .app-dialog-actions [data-app-dialog-ok]:hover {
   background: var(--hover);
+}
+.version-source {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--muted);
 }
 .version-history { list-style: none; margin: 0; padding: 0; }
 .version-history li {
