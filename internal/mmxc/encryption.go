@@ -26,9 +26,13 @@ import (
 // cannot open an encrypted MMXC database at all, so a plain .mmb export stays
 // the way back to MMEX.
 //
-// The threat model is a stolen disk or a copied backup. The cipher is
-// deterministic and carries no per-page MAC, so it does not detect tampering
-// with a file an attacker can write to.
+// The threat model is a stolen disk or a copied backup, and against that the
+// contents stay confidential even if the attacker can also write the file. The
+// cipher is deterministic and carries no per-page MAC, so what it lacks is
+// integrity: a writer cannot read pages or forge chosen content (Adiantum is a
+// wide-block cipher, so any change garbles the whole 4 KiB block), but can
+// corrupt pages or revert them to older versions undetected, and snapshots
+// reveal which pages changed.
 
 // --- Converting between plain and encrypted -----------------------------------
 

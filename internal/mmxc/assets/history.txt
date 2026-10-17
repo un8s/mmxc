@@ -1,3 +1,7 @@
+2026-10-16	Explain what database encryption protects and what it does not
+2026-10-16	Publish the image on ghcr.io and test every push in CI
+2026-10-16	Document the anonymity rules for commit subjects and fixtures
+2026-10-16	Update release
 2026-10-16	Replace the remaining real place names in payee-matching tests and comments
 2026-10-16	Update release
 2026-10-16	Keep location hints and real payee names out of the public tree
@@ -24,7 +28,3 @@
 2026-09-15	Drop the stale MMXC_WRITE_ENABLED from the docs
 2026-09-15	Read the database password from a secret file
 2026-09-15	Cover the unlock page's password check
-2026-09-15	Write encrypted or plain database copies from Settings
-2026-09-15	Encrypt databases at rest with a password unlock page
-2026-09-15	Swap modernc SQLite for the cgo-free ncruces driver
-2026-09-15	Let learned rules and payee history outrank model suggestions in Review

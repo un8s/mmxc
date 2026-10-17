@@ -6,7 +6,8 @@ there is no C toolchain and the same Dockerfile builds for `amd64` and `arm64`.
 These instructions work with Docker or Podman (`podman` and `podman compose` are
 drop-in replacements for the commands below).
 
-There is no published image yet; you build it from this repository.
+A multi-arch image is published as `ghcr.io/un8s/mmxc` (tags `latest` and the
+`YY.M.D` version). You can also build it yourself from this repository.
 
 ## What you provide at runtime
 
@@ -32,28 +33,29 @@ There is no published image yet; you build it from this repository.
 ```sh
 cp mmxc.example.yaml mmxc.yaml          # edit: set db_path (e.g. data/family.mmb)
 mkdir -p data && cp /path/to/your.mmb data/
-docker compose up -d --build
+docker compose up -d
 ```
 
 Then open <http://localhost:8080>. With no database in `data/`, MMXC shows a
 first-run page that creates a new one.
 
-`docker-compose.yml` in the repository root builds the image, maps port 8080, and
-mounts `./mmxc.yaml` and `./data`. Set `TZ` in it to your timezone so dates
-render in local time.
+`docker-compose.yml` in the repository root pulls `ghcr.io/un8s/mmxc:latest`, maps
+port 8080, and mounts `./mmxc.yaml` and `./data`. Set `TZ` in it to your timezone
+so dates render in local time. To run your own build instead, uncomment its
+`build: .` line and use `docker compose up -d --build`.
 
 Without compose:
 
 ```sh
-docker build -t mmxc:latest .
 docker run -d --name mmxc --restart unless-stopped -p 8080:8080 \
   -e TZ=Europe/Berlin \
   -v "$PWD/mmxc.yaml:/app/mmxc.yaml" \
   -v "$PWD/data:/app/data" \
-  mmxc:latest
+  ghcr.io/un8s/mmxc:latest
 ```
 
-To build for another architecture (needs buildx):
+Building from source (`docker build -t mmxc:latest .`) works the same way; use
+`mmxc:latest` as the image name. To build for another architecture (needs buildx):
 
 ```sh
 docker buildx build --platform linux/arm64 -t mmxc:latest --load .
@@ -157,7 +159,8 @@ to* the public bundle, so public HTTPS keeps working:
 
 Alternatively, bake it into the image (permanent, but needs a rebuild when the CA
 rotates) by adding this to the runtime stage of the `Dockerfile`, before
-`USER mmxc`:
+`USER mmxc`, then building your own image (uncomment `build: .` in the compose
+file):
 
 ```dockerfile
 COPY certs/your-ca.crt /usr/local/share/ca-certificates/your-ca.crt
@@ -167,9 +170,11 @@ RUN update-ca-certificates
 ## Updating
 
 ```sh
-git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+With your own build, `git pull` and `docker compose up -d --build` instead.
 
 Your data lives in `./data`, so recreating the container is safe. MMXC takes a
 full backup of the database into `backup_dir` before every change it makes.

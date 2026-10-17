@@ -146,10 +146,26 @@ An encrypted database is a `.mmbx` file, written through an Adiantum VFS; plain
 own format, not MMEX's `.emb` — so converting back to a plain `.mmb` copy is the
 way to use MMEX again. There is no password recovery. The password is never
 stored in the YAML file: MMXC asks on an unlock page at startup, or reads it from
-`MMXC_DB_PASSWORD_FILE` / `MMXC_DB_PASSWORD` for unattended restarts. The cipher
-protects a file at rest (stolen disk, copied backup); it has no per-page
-integrity check, so it does not protect against an attacker who can modify the
-file. Statements and backups of a plain database are not encrypted.
+`MMXC_DB_PASSWORD_FILE` / `MMXC_DB_PASSWORD` for unattended restarts.
+
+What the encryption does and does not do:
+
+- **It keeps the contents secret.** Without the password, a stolen disk, a
+  copied `.mmbx` or one of its backups reveals nothing of your data. This holds
+  even against someone who can also change the file.
+- **It does not detect changes.** Someone who can write to the file still cannot
+  read it or put chosen values into it: changing any byte turns that whole 4 KiB
+  block into garbage. But they can damage the file, or put back blocks from an
+  older copy, and MMXC will not notice. Someone holding several copies over time
+  (successive backups, say) can tell which blocks changed between them, though
+  not what changed. Keep your own backups somewhere you trust.
+- **It protects the file, not a running MMXC.** Once unlocked, the data is
+  available to whoever can use the app, so put sign-in in front of it (see
+  [Deployment](#deployment)).
+- **The password is the key.** Anyone with a copy can try passwords offline for
+  as long as they like, so use a long passphrase.
+
+Statements, and backups of a plain database, are not encrypted.
 
 ### Translation
 
@@ -160,9 +176,17 @@ page load in a new language is slow. See [docs/i18n.md](docs/i18n.md).
 ## Deployment
 
 MMXC ships as a single static binary in a small Alpine image (pure-Go SQLite, no
-C toolchain; `amd64` and `arm64`). There is no published image yet — build it
-yourself with `docker build -t mmxc .`. See **[docs/DOCKER.md](docs/DOCKER.md)** for the
-Docker / Podman setup, including a `docker-compose.yml` example.
+C toolchain; `amd64` and `arm64`), published as `ghcr.io/un8s/mmxc`:
+
+```sh
+docker run -d --name mmxc -p 8080:8080 \
+  -v "$PWD/mmxc.yaml:/app/mmxc.yaml" -v "$PWD/data:/app/data" \
+  ghcr.io/un8s/mmxc:latest
+```
+
+Or build it yourself with `docker build -t mmxc .`. See
+**[docs/DOCKER.md](docs/DOCKER.md)** for the Docker / Podman setup, including the
+`docker-compose.yml` in the repository root.
 
 MMXC is a single-user app. If it is reachable beyond your own machine, enable
 the OIDC sign-in and/or put it behind a reverse proxy (see `mmxc.example.yaml`

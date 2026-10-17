@@ -1,7 +1,9 @@
 services:
   mmxc:
-    image: mmxc:latest
-    build: .
+    image: ghcr.io/un8s/mmxc:latest
+    # To build from this checkout instead of pulling, uncomment and run
+    # `docker compose up -d --build`.
+    # build: .
     container_name: mmxc
     restart: unless-stopped
     ports:
