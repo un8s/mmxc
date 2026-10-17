@@ -11,16 +11,18 @@ A multi-arch image is published as `ghcr.io/un8s/mmxc` (tags `latest` and the
 
 ## What you provide at runtime
 
-- **`mmxc.yaml`** — your config. Copy `mmxc.example.yaml` and set at least
-  `db_path`. Mount it **read-write**: the Settings page saves changes back to this
+- **`mmxc.yaml`** — your config. Copy `mmxc.example.yaml`; its defaults already
+  point at `data/`, so it works unedited. Mount it **read-write**: the Settings page saves changes back to this
   file (and tightens it to mode `0600`, which only the file's owner may do — see
   [File permissions](#file-permissions)). Mount it read-only (`:ro`) only if you
   want to manage the config by hand; saving on the Settings page then fails.
 - **`data/`** — a folder holding your MMEX `.mmb` database plus the backups,
   audit log and statement archive MMXC creates. `db_path`, `backup_dir`,
   `audit_dir` and `statement_dir` in the config must resolve **inside** this
-  folder, e.g. `db_path: data/family.mmb` (the container's working directory is
-  `/app`, so `data/…` is `/app/data/…`).
+  folder. The default `db_path: data` names the folder itself (the container's
+  working directory is `/app`, so `data/…` is `/app/data/…`): MMXC offers every
+  `.mmb`/`.mmbx` in it and Settings switches between them. Naming one file instead
+  (`data/family.mmb`) pins that file, and every restart goes back to it.
 
 > The `.mmb` is your real money data. MMXC refuses to write while another program
 > (such as Money Manager Ex) holds the file locked, but don't run both at once.
@@ -31,7 +33,7 @@ A multi-arch image is published as `ghcr.io/un8s/mmxc` (tags `latest` and the
 ## Quick start
 
 ```sh
-cp mmxc.example.yaml mmxc.yaml          # edit: set db_path (e.g. data/family.mmb)
+cp mmxc.example.yaml mmxc.yaml          # defaults use ./data; edit as needed
 mkdir -p data && cp /path/to/your.mmb data/
 docker compose up -d
 ```
@@ -87,6 +89,28 @@ Ollama runs on the Docker host, set `llm_base_url` accordingly in `mmxc.yaml`:
 Remember to start Ollama with a context window large enough for a statement
 (`OLLAMA_CONTEXT_LENGTH=32768`).
 
+### Encrypting the connection
+
+MMXC sends your transactions and statement text to the model, plus
+`llm_api_key` as a bearer token, so use an `https://` base URL whenever that
+traffic leaves the machine (hosted providers only offer HTTPS anyway). MMXC
+verifies the server's certificate and has no option to skip that. Plain
+`http://` is fine for the same host or a private link such as WireGuard or
+Tailscale.
+
+Ollama only speaks HTTP. To reach one on another machine over HTTPS, put a TLS
+reverse proxy in front of it and point MMXC at the proxy, for example with Caddy:
+
+```
+ollama.example.internal {
+    reverse_proxy localhost:11434
+}
+```
+
+and `llm_base_url: https://ollama.example.internal/v1`. If the proxy's
+certificate comes from your own CA, see
+[Trusting a private CA](#trusting-a-private-ca).
+
 ## Environment variables
 
 Boot-time settings can come from the environment instead of (or overriding) the
@@ -136,15 +160,18 @@ The image's `HEALTHCHECK` requests `/`. When auth is enabled `/` redirects to th
 identity provider, so drop or relax the healthcheck (e.g. point it at
 `/favicon.svg`).
 
-### Trusting a private CA (OIDC over an internal HTTPS endpoint)
+### Trusting a private CA
 
-If your OIDC provider is served over HTTPS by your own certificate authority, the
-container doesn't trust it out of the box (the image only carries the public CA
-bundle), and startup fails with:
+If your OIDC provider or LLM endpoint is served over HTTPS with a certificate
+from your own certificate authority, the container doesn't trust it out of the
+box (the image only carries the public CA bundle). For OIDC, startup fails with:
 
 ```
 init auth: OIDC discovery from https://id.example.internal: ... x509: certificate signed by unknown authority
 ```
+
+and for the LLM endpoint, the model check in Settings and every Ask or import
+request fail with the same `x509` error.
 
 Give the container your CA's **root certificate** (PEM, plus any intermediate).
 Go reads every PEM file in the directories named by `SSL_CERT_DIR` *in addition

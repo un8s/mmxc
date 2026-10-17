@@ -133,7 +133,7 @@ container deployments:
 | Variable | Purpose |
 | --- | --- |
 | `MMXC_CONFIG` | Path to the YAML config file (locator only) |
-| `MMXC_DB_PATH` | Startup folder/file path scanned for `.mmb` / `.mmbx` databases |
+| `MMXC_DB_PATH` | Folder scanned at startup for `.mmb` / `.mmbx` databases (default `data`). Naming one file instead pins it: every restart opens that file, whatever Settings last selected |
 | `MMXC_DB_PASSWORD` | Password for an encrypted `.mmbx` database; without it the unlock page asks at startup |
 | `MMXC_DB_PASSWORD_FILE` | Path to a secret file holding that password (Docker/systemd secrets, kept on tmpfs). Wins over `MMXC_DB_PASSWORD` |
 | `MMXC_HTTP_ADDR` | Listen address (e.g. `:8080`) |

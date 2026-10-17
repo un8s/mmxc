@@ -1,3 +1,5 @@
+2026-10-16	Point db_path examples at the folder and document HTTPS LLM endpoints
+2026-10-16	Update release
 2026-10-16	Explain what database encryption protects and what it does not
 2026-10-16	Publish the image on ghcr.io and test every push in CI
 2026-10-16	Document the anonymity rules for commit subjects and fixtures
@@ -26,5 +28,3 @@
 2026-09-15	Delete the dead import-rule legacy fields
 2026-09-15	Remove the legacy config-key stripper
 2026-09-15	Drop the stale MMXC_WRITE_ENABLED from the docs
-2026-09-15	Read the database password from a secret file
-2026-09-15	Cover the unlock page's password check

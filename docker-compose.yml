@@ -16,7 +16,8 @@ services:
       # Boot-time settings can be set here instead of (or overriding) the YAML.
       # These are the only env-overridable settings; everything else (Ollama,
       # backups, statement dir, UI behavior) is configured in the Settings page.
-      # MMXC_DB_PATH: data/yourfile.mmb
+      # MMXC_DB_PATH: data              # folder scanned for databases (the default);
+      #                                 # naming one file pins it across restarts
       # MMXC_HTTP_ADDR: ":8080"
       # (Write mode is not an env var: it follows the database file's own write
       # bits. Make the file writable to allow edits, read-only to stay read-only.)
@@ -38,7 +39,7 @@ services:
       - ./mmxc.yaml:/app/mmxc.yaml
       # Runtime data: the .mmb database, backups, and statement archive.
       # db_path / backup_dir / statement_dir in mmxc.yaml must resolve under here,
-      # e.g. db_path: data/yourfile.mmb
+      # e.g. the default db_path: data
       - ./data:/app/data
     # Mount the database password as a secret (see MMXC_DB_PASSWORD_FILE above).
     # secrets:
