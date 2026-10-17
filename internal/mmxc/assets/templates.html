@@ -783,6 +783,32 @@
           </details>
         {{end}}
       {{end}}
+      {{with .Assistant.Months}}
+        <div class="table-wrap">
+          <table class="assistant-months">
+            <thead>
+              <tr>
+                <th>{{$.T "Month"}}</th>
+                <th class="right">{{$.T "Transactions"}}</th>
+                <th class="right">{{$.T "Withdrawals"}}</th>
+                <th class="right">{{$.T "Deposits"}}</th>
+                <th class="right">{{$.T "Net" "net amount after deposits minus withdrawals"}}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .}}
+                <tr>
+                  <td class="date">{{.Month}}</td>
+                  <td class="right">{{.Count}}</td>
+                  <td class="right amount">{{money .Withdrawals}}</td>
+                  <td class="right amount">{{money .Deposits}}</td>
+                  <td class="right amount {{if lt .Net 0.0}}negative{{end}}">{{money .Net}}</td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      {{end}}
       {{if .Assistant.Budget}}
         {{with .Assistant.Budget}}
           {{if .Entries}}
@@ -1118,8 +1144,9 @@
               <input type="hidden" name="stmt_account_number" value="{{.MonthlyReview.StatementAccountNumber}}">
               <input type="hidden" name="stmt_file" value="{{.MonthlyReview.StatementFile}}">
               <label class="checkline candidate-toggle"><input type="checkbox" data-hide-duplicates checked> {{.T "Hide possible duplicates"}}</label>
+              <div class="table-wrap">
               <table class="candidate-table">
-                <thead><tr><th>{{.T "Import"}}</th><th>{{.T "Date"}}</th><th>{{.T "Type" "transaction type column heading"}}</th><th>{{.T "Payee / Account"}}</th><th>{{.T "Category"}}</th><th class="right">{{.T "Amount" "money amount column heading"}}</th><th>{{.T "Notes"}}</th><th>{{.T "Status" "transaction status column heading"}}</th></tr></thead>
+                <thead><tr><th class="c-import">{{.T "Import"}}</th><th class="c-date">{{.T "Date"}}</th><th class="c-type">{{.T "Type / Status" "candidate column heading: the transaction type, with its status below"}}</th><th class="c-payee">{{.T "Payee / Account"}}</th><th class="c-category">{{.T "Category"}}</th><th class="c-amount right">{{.T "Amount" "money amount column heading"}}</th><th class="c-notes">{{.T "Notes"}}</th></tr></thead>
                 <tbody>
                   {{range $i, $c := .MonthlyReview.ImportCandidates}}
                     <tr class="{{if eq $c.Type "Transfer"}}candidate-transfer {{end}}{{if $c.Error}}candidate-error{{else if $c.Duplicate}}candidate-duplicate{{else if $c.Warning}}candidate-warning{{end}}" data-candidate-row data-duplicate="{{if $c.Duplicate}}true{{else}}false{{end}}">
@@ -1145,14 +1172,19 @@
                         <input name="date" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" value="{{$c.Date}}">
                         <div class="candidate-messages" data-messages="general">{{range $c.GeneralMessages}}<small class="{{if .IsError}}error-text{{else}}warning-text{{end}}">{{.Text}}</small>{{end}}</div>
                       </td>
-                      <td>
-                        <select name="type" data-candidate-type>
+                      <td><div class="candidate-type-status">
+                        <select name="type" data-candidate-type aria-label="{{$.T "Type" "transaction type column heading"}}">
                           <option value="Withdrawal" {{if eq $c.Type "Withdrawal"}}selected{{end}}>{{$.T "Withdrawal" "transaction type"}}</option>
                           <option value="Deposit" {{if eq $c.Type "Deposit"}}selected{{end}}>{{$.T "Deposit" "transaction type"}}</option>
                           <option value="TransferOut" {{if and (eq $c.Type "Transfer") (ne $c.TransferDirection "in")}}selected{{end}}>{{$.T "Transfer out" "transfer leaving the account being reviewed"}}</option>
                           <option value="TransferIn" {{if and (eq $c.Type "Transfer") (eq $c.TransferDirection "in")}}selected{{end}}>{{$.T "Transfer in" "transfer entering the account being reviewed"}}</option>
                         </select>
-                      </td>
+                        <select name="status" aria-label="{{$.T "Status" "transaction status column heading"}}">
+                          <option value="__blank" {{if eq $c.Status ""}}selected{{end}}>{{$.T "Unset" "transaction status"}}</option>
+                          <option value="Reconciled" {{if eq $c.Status "Reconciled"}}selected{{end}}>{{$.T "Reconciled" "transaction status"}}</option>
+                          <option value="Follow up" {{if eq $c.Status "Follow up"}}selected{{end}}>{{$.T "Follow up" "transaction status"}}</option>
+                        </select>
+                      </div></td>
                       <td>
                         <div class="candidate-payee"><input name="payee" list="review-payee-options" value="{{$c.Payee}}"></div>
                         <div class="candidate-to-account">
@@ -1177,18 +1209,12 @@
                         <input class="right" name="amount" type="text" inputmode="decimal" data-amount value="{{printf "%.2f" $c.Amount}}"{{if $c.Splits}} readonly{{end}} title="{{$.T "Accepts + and - calculations, e.g. 123.25 + 20" "tooltip explaining that a money amount field also accepts a simple calculation"}}">
                         <small class="candidate-statement-amount" data-statement-amount="{{printf "%.2f" $c.Amount}}" title="{{$.T "Amount on the statement"}}">{{money $c.Amount}}</small>
                       </td>
-                      <td><input name="notes" value="{{$c.Notes}}"></td>
-                      <td>
-                        <select name="status">
-                          <option value="__blank" {{if eq $c.Status ""}}selected{{end}}>{{$.T "Unset" "transaction status"}}</option>
-                          <option value="Reconciled" {{if eq $c.Status "Reconciled"}}selected{{end}}>{{$.T "Reconciled" "transaction status"}}</option>
-                          <option value="Follow up" {{if eq $c.Status "Follow up"}}selected{{end}}>{{$.T "Follow up" "transaction status"}}</option>
-                        </select>
-                      </td>
+                      <td><input name="notes" value="{{$c.Notes}}" aria-label="{{$.T "Notes"}}"></td>
                     </tr>
                   {{end}}
                 </tbody>
               </table>
+              </div>
               {{if .Info.WriteEnabled}}<button type="submit" data-import-submit>{{.T "Import Approved"}} <span data-import-count></span></button>{{else}}<p class="notice">{{.T "Import commit is disabled in read-only mode."}}</p>{{end}}
             </form>
           {{else}}
@@ -2316,7 +2342,7 @@
 {{define "transaction_entry"}}
 {{$root := .Root}}
 {{$ex := .FixAccountID}}{{if and (eq $ex 0) .E}}{{$ex = .E.AccountID}}{{end}}
-<form class="entry-grid" method="post" action="{{.Action}}" data-transaction-form>
+<form class="entry-grid" method="post" action="{{.Action}}" data-transaction-form data-preflight="/transactions/check">
   {{if .E}}<input type="hidden" name="trans_id" value="{{.E.ID}}">
   <input type="hidden" name="scroll" value="{{$root.Scroll}}">{{end}}
   {{if .ReturnTo}}<input type="hidden" name="return_to" value="{{.ReturnTo}}">{{end}}

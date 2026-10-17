@@ -2,6 +2,7 @@ package mmxc
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -132,6 +133,63 @@ func (a *app) createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, redirectAfterTransaction(r, input.AccountID), http.StatusSeeOther)
+}
+
+// checkTransaction is the transaction form's pre-flight: it runs the same
+// parsing the real submission does, without writing. 204 means the form can be
+// submitted; 409 names the payee or category it would create, for the page to
+// confirm (the JSON "set" fields carry the confirmed names back); anything else
+// is the error the submission would hit, as plain text.
+func (a *app) checkTransaction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.httpError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !a.config.WriteEnabled {
+		a.httpError(w, "write mode is disabled", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// New transactions must use active payees and categories; edits may keep
+	// inactive ones, exactly as createTransaction and updateTransaction parse.
+	_, err := a.parseTransactionInput(r, strings.TrimSpace(r.FormValue("trans_id")) == "")
+	var unconfirmed *unconfirmedCreation
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.As(err, &unconfirmed):
+		const guidance = "confirmation before saving a transaction creates a new payee or category"
+		var message string
+		set := map[string]string{}
+		switch {
+		case unconfirmed.Payee != "" && unconfirmed.Category != "":
+			message = fmt.Sprintf(a.translateUI("This creates the new category “%s” and the new payee “%s”, with that category as its default.", guidance), unconfirmed.Category, unconfirmed.Payee)
+		case unconfirmed.Payee != "" && unconfirmed.PayeeDefault != "":
+			message = fmt.Sprintf(a.translateUI("This creates the new payee “%s”, with “%s” as its default category.", guidance), unconfirmed.Payee, unconfirmed.PayeeDefault)
+		case unconfirmed.Payee != "":
+			message = fmt.Sprintf(a.translateUI("This creates the new payee “%s”.", guidance), unconfirmed.Payee)
+		default:
+			message = fmt.Sprintf(a.translateUI("This creates the new category “%s”.", guidance), unconfirmed.Category)
+		}
+		if unconfirmed.Payee != "" {
+			set["create_payee"] = unconfirmed.Payee
+		}
+		if unconfirmed.Category != "" {
+			set["create_category"] = unconfirmed.Category
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"confirm": message,
+			"ok":      a.translateUI("Create and save", "button that confirms creating a new payee or category and saves the transaction"),
+			"set":     set,
+		})
+	default:
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
 }
 
 func (a *app) updateTransaction(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +345,9 @@ func (a *app) parseTransactionInput(r *http.Request, requireActive bool) (transa
 	categoryID := 0
 	toAccountID := 0
 	var splits []splitLine
+	var payeeName, newCategoryName string
+	var newCategoryParentID int
+	var unconfirmed unconfirmedCreation
 	if transType == "Transfer" {
 		if formBoolDefault(r, "split_mode", false) {
 			return transactionInput{}, errors.New("transfers cannot be split")
@@ -311,16 +372,30 @@ func (a *app) parseTransactionInput(r *http.Request, requireActive bool) (transa
 	} else {
 		payeeID, err = strconv.Atoi(r.FormValue("payee_id"))
 		if err != nil || payeeID <= 0 {
-			payeeID, err = a.resolvePayeeID(r.FormValue("payee_text"))
+			payeeText := strings.TrimSpace(r.FormValue("payee_text"))
+			payeeID, err = a.resolvePayeeID(payeeText)
+			var notFound *payeeNotFoundError
+			if errors.As(err, &notFound) {
+				// A name that matches nothing may become a new payee, but only
+				// with the user's confirmation of this exact name.
+				payeeID, err = 0, nil
+				if confirmedName(r, "create_payee", payeeText) {
+					payeeName = payeeText
+				} else {
+					unconfirmed.Payee = payeeText
+				}
+			}
 			if err != nil {
 				return transactionInput{}, err
 			}
 		}
-		if !a.payeeExists(payeeID) {
-			return transactionInput{}, fmt.Errorf("payee %d was not found", payeeID)
-		}
-		if requireActive && !a.payeeActive(payeeID) {
-			return transactionInput{}, fmt.Errorf("payee %d is inactive; choose an active payee", payeeID)
+		if payeeID > 0 {
+			if !a.payeeExists(payeeID) {
+				return transactionInput{}, fmt.Errorf("payee %d was not found", payeeID)
+			}
+			if requireActive && !a.payeeActive(payeeID) {
+				return transactionInput{}, fmt.Errorf("payee %d is inactive; choose an active payee", payeeID)
+			}
 		}
 		if formBoolDefault(r, "split_mode", false) {
 			splits, amount, err = a.parseSplitLines(r, requireActive)
@@ -331,31 +406,113 @@ func (a *app) parseTransactionInput(r *http.Request, requireActive bool) (transa
 		} else {
 			categoryID, err = strconv.Atoi(r.FormValue("category_id"))
 			if err != nil || categoryID <= 0 {
-				categoryID, err = a.resolveCategoryID(r.FormValue("category_text"))
+				categoryText := strings.TrimSpace(r.FormValue("category_text"))
+				categoryID, err = a.resolveCategoryID(categoryText)
+				var notFound *categoryNotFoundError
+				if errors.As(err, &notFound) {
+					// Only a new subcategory of an existing parent can be created,
+					// the same rule the statement import follows.
+					if parentID, name, canonical, ok := a.newCategoryFor(categoryText); ok {
+						categoryID, err = 0, nil
+						if confirmedName(r, "create_category", canonical) {
+							newCategoryParentID, newCategoryName = parentID, name
+						} else {
+							unconfirmed.Category = canonical
+						}
+					}
+				}
 				if err != nil {
 					return transactionInput{}, err
 				}
 			}
-			if err := a.validateTransactionCategory(categoryID); err != nil {
-				return transactionInput{}, err
-			}
-			if requireActive && !a.categoryActive(categoryID) {
-				return transactionInput{}, fmt.Errorf("category %d is inactive; choose an active category", categoryID)
+			if categoryID > 0 {
+				if err := a.validateTransactionCategory(categoryID); err != nil {
+					return transactionInput{}, err
+				}
+				if requireActive && !a.categoryActive(categoryID) {
+					return transactionInput{}, fmt.Errorf("category %d is inactive; choose an active category", categoryID)
+				}
 			}
 		}
 	}
+	if unconfirmed.Payee != "" || unconfirmed.Category != "" {
+		// A new payee takes the transaction's category as its default, so
+		// the confirmation names it (a split has no single category).
+		if unconfirmed.Payee != "" {
+			switch {
+			case unconfirmed.Category != "":
+				unconfirmed.PayeeDefault = unconfirmed.Category
+			case newCategoryName == "" && categoryID > 0:
+				unconfirmed.PayeeDefault = a.categoryPath(categoryID)
+			}
+		}
+		return transactionInput{}, &unconfirmed
+	}
 	return transactionInput{
-		AccountID:   accountID,
-		ToAccountID: toAccountID,
-		Date:        date,
-		Type:        transType,
-		Amount:      amount,
-		PayeeID:     payeeID,
-		CategoryID:  categoryID,
-		Status:      status,
-		Notes:       strings.TrimSpace(r.FormValue("notes")),
-		Splits:      splits,
+		AccountID:           accountID,
+		ToAccountID:         toAccountID,
+		Date:                date,
+		Type:                transType,
+		Amount:              amount,
+		PayeeID:             payeeID,
+		PayeeName:           payeeName,
+		CategoryID:          categoryID,
+		NewCategoryParentID: newCategoryParentID,
+		NewCategoryName:     newCategoryName,
+		Status:              status,
+		Notes:               strings.TrimSpace(r.FormValue("notes")),
+		Splits:              splits,
 	}, nil
+}
+
+// unconfirmedCreation is parseTransactionInput's answer when the form names a
+// payee or a "Parent: Sub" category that does not exist yet and the user has
+// not confirmed creating it. The check endpoint turns it into a question; a
+// submission that skipped the check gets it as an ordinary error.
+type unconfirmedCreation struct {
+	Payee    string
+	Category string
+	// PayeeDefault is the category a new payee will default to, if any.
+	PayeeDefault string
+}
+
+func (e *unconfirmedCreation) Error() string {
+	switch {
+	case e.Payee != "" && e.Category != "":
+		return fmt.Sprintf("payee %q and category %q do not exist yet; confirm to create them", e.Payee, e.Category)
+	case e.Payee != "":
+		return fmt.Sprintf("payee %q does not exist yet; confirm to create it", e.Payee)
+	default:
+		return fmt.Sprintf("category %q does not exist yet; confirm to create it", e.Category)
+	}
+}
+
+// confirmedName reports whether the form confirms creating exactly name. The
+// confirmation carries the name rather than a yes/no flag, so editing the
+// field after confirming cannot create something the user never saw.
+func confirmedName(r *http.Request, field, name string) bool {
+	confirmed := strings.TrimSpace(r.FormValue(field))
+	return confirmed != "" && strings.EqualFold(confirmed, name)
+}
+
+// createConfirmedNamesInTx creates the subcategory and payee a confirmed form
+// asked for, so the transaction can refer to them by id.
+func createConfirmedNamesInTx(tx *sql.Tx, input *transactionInput) error {
+	if input.NewCategoryName != "" {
+		id, err := ensureCategoryInTx(tx, input.NewCategoryParentID, input.NewCategoryName)
+		if err != nil {
+			return err
+		}
+		input.CategoryID = id
+	}
+	if input.PayeeID <= 0 && input.PayeeName != "" && input.Type != "Transfer" {
+		id, err := ensurePayeeInTx(tx, input.PayeeName, input.CategoryID)
+		if err != nil {
+			return err
+		}
+		input.PayeeID = id
+	}
+	return nil
 }
 
 func (a *app) parseSplitLines(r *http.Request, requireActive bool) ([]splitLine, float64, error) {
@@ -490,6 +647,9 @@ func (a *app) insertManualTransaction(input transactionInput) error {
 	}
 	defer tx.Rollback()
 
+	if err := createConfirmedNamesInTx(tx, &input); err != nil {
+		return err
+	}
 	if _, err := insertTransactionInTx(tx, input); err != nil {
 		return err
 	}
@@ -566,6 +726,9 @@ func (a *app) updateTransactionRecord(transID int64, input transactionInput) err
 		return err
 	}
 	defer tx.Rollback()
+	if err := createConfirmedNamesInTx(tx, &input); err != nil {
+		return err
+	}
 
 	var toAccount any
 	var toAmount any
@@ -627,6 +790,9 @@ func (a *app) updateSplitTransactionRecord(transID int64, input transactionInput
 		return err
 	}
 	defer tx.Rollback()
+	if err := createConfirmedNamesInTx(tx, &input); err != nil {
+		return err
+	}
 	result, err := tx.Exec(`
 UPDATE CHECKINGACCOUNT_V1
    SET ACCOUNTID = ?, TOACCOUNTID = NULL, PAYEEID = ?, TRANSCODE = ?, TRANSAMOUNT = ?,

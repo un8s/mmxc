@@ -1181,13 +1181,27 @@ func (a *app) derivePendingCandidates(accountID int, start, end string) []import
 			continue // both overlapping statements list the same charge
 		}
 		seen[key] = true
-		c.Selected = false
 		pending = append(pending, c)
 	}
 	for i := range pending {
 		pending[i].Index = i + 1
 	}
 	return pending
+}
+
+// candidateFullyResolved reports whether a candidate can be imported as it
+// stands: its payee (or transfer account) and category (or splits) resolve to
+// existing records, and it carries no error, no warning and no duplicate match.
+// Any "confirm" note — an AI or history guess, a payee or category the import
+// would create — leaves it for the user to tick.
+func candidateFullyResolved(c importCandidate) bool {
+	if c.Duplicate || len(c.Errors) > 0 || len(c.Warnings) > 0 {
+		return false
+	}
+	if c.Type == "Transfer" {
+		return c.ToAccountID > 0
+	}
+	return c.PayeeID > 0 && (c.CategoryID > 0 || len(c.Splits) > 0)
 }
 
 func (a *app) listMonthlyReviewAccounts(start, end string) ([]monthlyReviewAccount, error) {
@@ -1835,7 +1849,6 @@ func sortedKeys(set map[string]bool) []string {
 // is idempotent so the LLM follow-up pass can re-run it after changing a
 // payee/category.
 func (a *app) finalizeImportCandidate(accountID int, c *importCandidate) {
-	c.Selected = true
 	historyNotes := a.deriveCandidateFromHistory(accountID, c)
 	c.DuplicateID = a.importCandidateDuplicateID(accountID, *c)
 	c.Duplicate = c.DuplicateID > 0
@@ -1867,9 +1880,7 @@ func (a *app) finalizeImportCandidate(accountID int, c *importCandidate) {
 	if !hasError {
 		c.Warning = strings.Join(c.Warnings, "; ")
 	}
-	if hasError || c.Duplicate {
-		c.Selected = false
-	}
+	c.Selected = candidateFullyResolved(*c)
 	c.PayeeMessages = nil
 	c.CategoryMessages = nil
 	c.GeneralMessages = nil

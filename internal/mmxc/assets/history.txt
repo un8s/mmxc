@@ -1,3 +1,10 @@
+2026-10-17	Show the app in the README with screenshots of invented data
+2026-10-17	Let Ask break spending down by month
+2026-10-17	Let the transaction form create a payee or subcategory after confirmation
+2026-10-17	Give the import table room for payee and category names
+2026-10-17	Tick import candidates that resolve fully, leave the rest for review
+2026-10-17	Let a database without budgets start its first budget year
+2026-10-16	Update release
 2026-10-16	Add design notes and explain in the README how MMXC is built
 2026-10-16	Fix the data race when Settings replaces the database during requests
 2026-10-16	Drop the deprecated go-sqlite3/embed import that printed a startup notice
@@ -21,10 +28,3 @@
 2026-10-16	Keep the busy overlay off the built-in prompt download
 2026-10-16	Give the audit log page full width and a Settings sidebar link
 2026-10-16	Answer read-only budget questions in Ask
-2026-10-15	Print a usable URL when http_addr names a host
-2026-10-15	Import OFX/QFX and QIF downloads without the model; plan CSV import
-2026-10-14	Use one multimodal model for all LLM work; settle undated statement years
-2026-10-14	Use invented bank names in tests and check samples against their goldens
-2026-10-14	Let users override the Ask and statement prompt guidance with text files
-2026-10-13	Split public and internal docs and justfiles; add a general container guide
-2026-10-13	Reload a translation cache file when it is edited outside MMXC

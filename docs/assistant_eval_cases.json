@@ -187,7 +187,7 @@
         "category": "Living: Groceries",
         "type": "Withdrawal"
       },
-      "absent": ["payee", "description_contains"]
+      "absent": ["payee", "description_contains", "group_by"]
     }
   },
   {
@@ -882,7 +882,7 @@
         "description_contains": "refund",
         "type": "Deposit"
       },
-      "absent": ["payee", "category"]
+      "absent": ["payee", "category", "group_by"]
     }
   },
   {
@@ -1517,6 +1517,68 @@
       "action": "final",
       "tool": "",
       "answer_contains": ["Cannot answer"]
+    }
+  },
+  {
+    "name": "monthly_category_breakdown_this_year",
+    "question": "How much did I spend on groceries each month this year?",
+    "transcript": [
+      {
+        "tool": "find_category",
+        "arguments": {"query": "groceries"},
+        "result": [{"id": 301, "name": "Living: Groceries", "active": true}]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "category": "Living: Groceries",
+        "type": "Withdrawal",
+        "group_by": "month"
+      },
+      "absent": ["payee", "description_contains"]
+    }
+  },
+  {
+    "name": "monthly_payee_breakdown_this_year",
+    "question": "How much did I pay StreamBox per month this year?",
+    "transcript": [
+      {
+        "tool": "find_payee",
+        "arguments": {"query": "StreamBox"},
+        "result": [{"id": 101, "name": "StreamBox", "active": true, "category": "Leisure: Subscriptions"}]
+      }
+    ],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{current_year_start}}",
+        "to": {"any_of": ["{{current_date}}", "{{current_year_end}}"]},
+        "payee": "StreamBox",
+        "type": "Withdrawal",
+        "group_by": "month"
+      },
+      "absent": ["category", "description_contains"]
+    }
+  },
+  {
+    "name": "monthly_spending_last_year",
+    "question": "Show my monthly spending for last year.",
+    "transcript": [],
+    "expect": {
+      "action": "tool",
+      "tool": "spending_summary",
+      "arguments": {
+        "from": "{{last_year_start}}",
+        "to": "{{last_year_end}}",
+        "type": "Withdrawal",
+        "group_by": "month"
+      },
+      "absent": ["payee", "category", "description_contains"]
     }
   }
 ]

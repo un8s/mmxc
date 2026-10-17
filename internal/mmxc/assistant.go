@@ -29,6 +29,7 @@ type assistantPageData struct {
 	ClarificationQuestion string
 	ClarificationOptions  []string
 	Budget                *assistantBudgetStatus
+	Months                []assistantMonthTotal
 	FeedbackSaved         bool
 }
 
@@ -61,7 +62,22 @@ type assistantToolFilterArgs struct {
 	Limit               int     `json:"limit"`
 	AmountMin           float64 `json:"amount_min"`
 	AmountMax           float64 `json:"amount_max"`
+	// GroupBy "month" makes spending_summary also return per-month totals.
+	GroupBy string `json:"group_by"`
 }
+
+// assistantMonthTotal is one row of a spending_summary grouped by month.
+type assistantMonthTotal struct {
+	Month       string  `json:"month"`
+	Count       int     `json:"count"`
+	Withdrawals float64 `json:"withdrawals"`
+	Deposits    float64 `json:"deposits"`
+	Net         float64 `json:"net"`
+}
+
+// assistantMaxGroupedMonths bounds a month breakdown, so one question cannot
+// ask for an unbounded table.
+const assistantMaxGroupedMonths = 36
 
 type assistantCompareSummaryArgs struct {
 	PeriodALabel        string  `json:"period_a_label"`
@@ -94,6 +110,7 @@ type assistantToolRunResult struct {
 	ClarificationQuestion string
 	ClarificationOptions  []string
 	Budget                *assistantBudgetStatus
+	Months                []assistantMonthTotal
 }
 
 type assistantClarificationArgs struct {
@@ -305,6 +322,7 @@ func (a *app) runAssistantToolPOC(question string, transcript []map[string]any) 
 				Transactions: lastTransactions,
 				Totals:       lastTotals,
 				Budget:       assistantBudgetResult(lastResult),
+				Months:       assistantMonthsResult(lastResult),
 			}, nil
 		}
 		if decision.Action != "tool" {
@@ -331,6 +349,7 @@ func (a *app) runAssistantToolPOC(question string, transcript []map[string]any) 
 					Transactions: lastTransactions,
 					Totals:       lastTotals,
 					Budget:       assistantBudgetResult(lastResult),
+					Months:       assistantMonthsResult(lastResult),
 				}, nil
 			}
 			if repaired.Action != "tool" {
@@ -378,6 +397,7 @@ func (a *app) runAssistantToolPOC(question string, transcript []map[string]any) 
 		Transactions: lastTransactions,
 		Totals:       lastTotals,
 		Budget:       assistantBudgetResult(lastResult),
+		Months:       assistantMonthsResult(lastResult),
 	}, errors.New("assistant did not produce a final answer after tool calls")
 }
 
@@ -392,6 +412,7 @@ func applyAssistantResult(data *pageData, result assistantToolRunResult) {
 	data.Assistant.ClarificationQuestion = result.ClarificationQuestion
 	data.Assistant.ClarificationOptions = result.ClarificationOptions
 	data.Assistant.Budget = result.Budget
+	data.Assistant.Months = result.Months
 	data.Transactions = result.Transactions
 }
 
@@ -422,6 +443,7 @@ func (a *app) assistantResultFromRequest(prompt string, q url.Values) (assistant
 		Transactions: txs,
 		Totals:       totals,
 		Budget:       assistantBudgetResult(result),
+		Months:       assistantMonthsResult(result),
 	}, nil
 }
 
@@ -592,7 +614,7 @@ Tools:
 - find_account {"query": "text"}: finds account names and returns account metadata such as type and status.
 - find_category {"query": "text"}: finds category names.
 - find_payee {"query": "text"}: finds payee names.
-- spending_summary {"from":"","to":"","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"Withdrawal","status":"","amount_min":0,"amount_max":0}: totals matching transactions, including count.
+- spending_summary {"from":"","to":"","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"Withdrawal","status":"","amount_min":0,"amount_max":0,"group_by":""}: totals matching transactions, including count. With group_by "month" it also returns months, one row per calendar month from from to to, each with its own count and totals.
 - compare_summary {"period_a_label":"","period_a_from":"YYYY-MM-DD","period_a_to":"YYYY-MM-DD","period_b_label":"","period_b_from":"YYYY-MM-DD","period_b_to":"YYYY-MM-DD","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"Withdrawal","status":"","amount_min":0,"amount_max":0}: compares totals for the same filters across two concrete periods.
 - read_transactions {"from":"","to":"","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"","status":"","sort":"date_desc","limit":20,"amount_min":0,"amount_max":0}: returns bounded transaction rows.
 - budget_status {"year":"YYYY","category":""}: budget versus actual for one budget year, per budgeted category (including its subcategories when category is set) plus expense and income totals. Amounts are positive; actual is net spending for expense budgets and net income for income budgets; remaining is budget minus actual and is negative once over budget; over_by is the excess; budget_to_date is the budget prorated through Current date (whole months for monthly and longer periods).
@@ -606,6 +628,7 @@ type must be "", "Withdrawal", "Deposit", or "Transfer". Never use "expense" or 
 status must be "", "Reconciled", "Void", "Follow up", "Duplicate", or "__blank".
 sort must be "", "date_desc", "date_asc", "amount_desc", or "amount_asc".
 budget_status year is a four-digit budget year such as "2026"; category is empty for all budgeted categories.
+group_by must be "" or "month". Only spending_summary accepts it. group_by "month" requires from and to, covering at most 36 months.
 limit, amount_min, and amount_max must be JSON numbers, never strings. Use 0 for unused numeric values.
 If the question is not about read-only finance data or cannot be answered with these tools, return final with an answer containing "Cannot answer".
 Current date: %s
@@ -613,7 +636,7 @@ Accounts: %s
 Previous tool calls and results: %s
 
 Return either:
-{"action":"tool","tool":"spending_summary","arguments":{"from":"","to":"","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"Withdrawal","status":"","amount_min":0,"amount_max":0},"answer":""}
+{"action":"tool","tool":"spending_summary","arguments":{"from":"","to":"","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"Withdrawal","status":"","amount_min":0,"amount_max":0,"group_by":""},"answer":""}
 or:
 {"action":"tool","tool":"compare_summary","arguments":{"period_a_label":"this month","period_a_from":"","period_a_to":"","period_b_label":"last month","period_b_from":"","period_b_to":"","account":"","payee":"","category":"","uncategorized":false,"description_contains":"","type":"Withdrawal","status":"","amount_min":0,"amount_max":0},"answer":""}
 or:
@@ -691,6 +714,13 @@ func (a *app) executeAssistantTool(question, name string, raw json.RawMessage) (
 		if err := decodeAssistantToolArgs(raw, &args); err != nil {
 			return nil, nil, assistantTotals{}, nil, err
 		}
+		groupBy := strings.TrimSpace(args.GroupBy)
+		switch {
+		case groupBy != "" && groupBy != "month":
+			return nil, nil, assistantTotals{}, nil, fmt.Errorf("group_by must be empty or \"month\", not %q", groupBy)
+		case groupBy != "" && name != "spending_summary":
+			return nil, nil, assistantTotals{}, nil, errors.New("group_by is only supported by spending_summary")
+		}
 		filter, warnings, err := a.assistantToolFilter(question, args, name == "read_transactions")
 		if err != nil {
 			return nil, nil, assistantTotals{}, nil, err
@@ -712,6 +742,13 @@ func (a *app) executeAssistantTool(question, name string, raw json.RawMessage) (
 			"withdrawals": roundMoney(totals.Withdrawals),
 			"deposits":    roundMoney(totals.Deposits),
 			"net":         roundMoney(totals.Net),
+		}
+		if groupBy == "month" {
+			months, err := a.assistantMonthTotals(txs, filter)
+			if err != nil {
+				return nil, nil, assistantTotals{}, nil, err
+			}
+			result["months"] = months
 		}
 		return result, txs, totals, warnings, nil
 	default:
@@ -1237,6 +1274,54 @@ func parseAssistantToolTranscript(text string) ([]map[string]any, error) {
 		return nil, errors.New("assistant transcript has too many entries")
 	}
 	return transcript, nil
+}
+
+// assistantMonthTotals splits a spending_summary's transactions by calendar
+// month across the whole requested range, months without matches included as
+// zero rows, and totals each month with the same rules as the overall total
+// (assistantTotals, so split lines count the same way).
+func (a *app) assistantMonthTotals(txs []transaction, filter transactionFilter) ([]assistantMonthTotal, error) {
+	from, errFrom := time.Parse("2006-01-02", filter.From)
+	to, errTo := time.Parse("2006-01-02", filter.To)
+	if errFrom != nil || errTo != nil || to.Before(from) {
+		return nil, errors.New("group_by \"month\" requires from and to dates, with from not after to")
+	}
+	first := time.Date(from.Year(), from.Month(), 1, 0, 0, 0, 0, time.UTC)
+	last := time.Date(to.Year(), to.Month(), 1, 0, 0, 0, 0, time.UTC)
+	if months := (last.Year()-first.Year())*12 + int(last.Month()-first.Month()) + 1; months > assistantMaxGroupedMonths {
+		return nil, fmt.Errorf("group_by \"month\" covers at most %d months; this range has %d", assistantMaxGroupedMonths, months)
+	}
+	byMonth := map[string][]transaction{}
+	for _, tx := range txs {
+		byMonth[yearMonth(tx.Date)] = append(byMonth[yearMonth(tx.Date)], tx)
+	}
+	var out []assistantMonthTotal
+	for m := first; !m.After(last); m = m.AddDate(0, 1, 0) {
+		key := m.Format("2006-01")
+		totals, err := a.assistantTotals(byMonth[key], filter)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, assistantMonthTotal{
+			Month:       key,
+			Count:       totals.Count,
+			Withdrawals: roundMoney(totals.Withdrawals),
+			Deposits:    roundMoney(totals.Deposits),
+			Net:         roundMoney(totals.Net),
+		})
+	}
+	return out, nil
+}
+
+// assistantMonthsResult returns the month rows of a grouped spending_summary
+// result, or nil for any other result.
+func assistantMonthsResult(result any) []assistantMonthTotal {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return nil
+	}
+	months, _ := m["months"].([]assistantMonthTotal)
+	return months
 }
 
 func assistantToolSummary(tool string, result any) string {

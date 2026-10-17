@@ -31,7 +31,7 @@ tool results it asked for.
 | Tool | Purpose |
 | --- | --- |
 | `find_account`, `find_category`, `find_payee` | Look up names (substring match). The model must resolve names this way before filtering; filters accept **exact** names only. |
-| `spending_summary` | Count and withdrawal/deposit/net totals for a filter ("how much", "how often"). |
+| `spending_summary` | Count and withdrawal/deposit/net totals for a filter ("how much", "how often"). With `group_by: "month"` it also returns one row per calendar month of the range, empty months included ("each month this year"); the answer shows them as a table. At most 36 months. |
 | `compare_summary` | The same totals for two explicit periods, plus the delta. |
 | `read_transactions` | Individual rows ("show", "biggest", "latest"). |
 | `budget_status` | Budget versus actual for one budget year ("how much budget is left for groceries this year?", "how much over budget was I last year on hobbies?"), for one category and its subcategories or for every budgeted category. |

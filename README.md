@@ -11,6 +11,16 @@ over the *same* database file, built around a monthly review and LLM-assisted
 statement-import workflow. Data entered in MMEX shows up in MMXC, and data
 entered in MMXC stays valid in MMEX.
 
+![Monthly review of a credit card in dark mode: the month's imported transactions, the attached statement file, and payment and expense totals](docs/images/review-dark.png)
+
+| Statement import | Ask |
+|:---:|:---:|
+| [![Statement import: four rows resolved from history and ticked, one new payee flagged for review](docs/images/import.png)](docs/images/import.png) | [![Ask answering how much was spent on groceries in September, with the four transactions behind the total](docs/images/ask.png)](docs/images/ask.png) |
+| **Reports** | **Accounts** |
+| [![Reports overview with income, expenses and net for four months and the top expense categories](docs/images/reports.png)](docs/images/reports.png) | [![A checking account with running balances, transfers to savings and card payments](docs/images/accounts.png)](docs/images/accounts.png) |
+
+<sub>All names and amounts in the screenshots are invented.</sub>
+
 The interface is English by default and can be translated into other languages
 with your configured LLM (see [Translation](#translation)). Your data is
 language-independent: a new database can be based on any of the bundled world

@@ -183,3 +183,122 @@ func TestTransactionRowMenuOffersDeleteOnlyWhenEnabled(t *testing.T) {
 		t.Fatal("delete confirmation is missing from the i18n table")
 	}
 }
+
+// newEntryForm is a manual withdrawal on fixture account 12 with free-text payee
+// and category, the way the transaction form posts them.
+func newEntryForm(payee, category string) url.Values {
+	return url.Values{
+		"account_id": {"12"}, "date": {"2025-10-20"}, "type": {"Withdrawal"},
+		"amount": {"18.40"}, "status": {"Reconciled"},
+		"payee_text": {payee}, "category_text": {category},
+	}
+}
+
+// The manual form may create a payee or a "Parent: Sub" category, but only
+// after the user confirmed that exact name: the check endpoint names what would
+// be created, and the real submission must carry the confirmed names.
+func TestManualTransactionCreatesConfirmedPayeeAndCategory(t *testing.T) {
+	a := newDeleteTestApp(t, false)
+	form := newEntryForm("Willow Lane Books", "Leisure: Board Games")
+
+	rec := httptest.NewRecorder()
+	a.checkTransaction(rec, formRequest(form))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("check status = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusConflict)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"create_payee":"Willow Lane Books"`, `"create_category":"Leisure: Board Games"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("check response %s lacks %s", body, want)
+		}
+	}
+
+	// Unconfirmed: nothing is created.
+	rec = httptest.NewRecorder()
+	a.createTransaction(rec, formRequest(form))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unconfirmed create status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if n := a.countWhere("PAYEE_V1", "PAYEENAME = ?", "Willow Lane Books"); n != 0 {
+		t.Fatalf("payee created without confirmation")
+	}
+
+	// A confirmation for a different name does not count.
+	stale := newEntryForm("Willow Lane Books", "Leisure: Board Games")
+	stale.Set("create_payee", "Some Other Shop")
+	stale.Set("create_category", "Leisure: Board Games")
+	rec = httptest.NewRecorder()
+	a.createTransaction(rec, formRequest(stale))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("stale confirmation status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+
+	confirmed := newEntryForm("Willow Lane Books", "Leisure: Board Games")
+	confirmed.Set("create_payee", "Willow Lane Books")
+	confirmed.Set("create_category", "Leisure: Board Games")
+	rec = httptest.NewRecorder()
+	a.checkTransaction(rec, formRequest(confirmed))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("confirmed check status = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusNoContent)
+	}
+	rec = httptest.NewRecorder()
+	a.createTransaction(rec, formRequest(confirmed))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("confirmed create status = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusSeeOther)
+	}
+	var catID, parentID int
+	if err := a.db.QueryRow("SELECT CATEGID, PARENTID FROM CATEGORY_V1 WHERE CATEGNAME = 'Board Games'").Scan(&catID, &parentID); err != nil {
+		t.Fatalf("new subcategory: %v", err)
+	}
+	if parentID != 3 {
+		t.Fatalf("Board Games parent = %d, want Leisure (3)", parentID)
+	}
+	if n := a.countWhere("CHECKINGACCOUNT_V1 t JOIN PAYEE_V1 p ON p.PAYEEID = t.PAYEEID", "p.PAYEENAME = ? AND t.CATEGID = ? AND t.TRANSAMOUNT = 18.4", "Willow Lane Books", catID); n != 1 {
+		t.Fatalf("transaction with the new payee and category = %d rows, want 1", n)
+	}
+	// The new subcategory becomes the new payee's default category.
+	if n := a.countWhere("PAYEE_V1", "PAYEENAME = ? AND CATEGID = ?", "Willow Lane Books", catID); n != 1 {
+		t.Fatal("new payee does not default to the new subcategory")
+	}
+}
+
+// A new payee booked to an existing category takes that category as its
+// default, and the confirmation says so.
+func TestManualTransactionNewPayeeDefaultsToItsCategory(t *testing.T) {
+	a := newDeleteTestApp(t, false)
+	form := newEntryForm("Harbor Florist", "Leisure: Hobbies")
+
+	rec := httptest.NewRecorder()
+	a.checkTransaction(rec, formRequest(form))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("check status = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusConflict)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "Leisure: Hobbies") || !strings.Contains(body, "default category") {
+		t.Fatalf("confirmation %s does not name the default category", body)
+	}
+	form.Set("create_payee", "Harbor Florist")
+	rec = httptest.NewRecorder()
+	a.createTransaction(rec, formRequest(form))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create status = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusSeeOther)
+	}
+	if n := a.countWhere("PAYEE_V1", "PAYEENAME = ? AND CATEGID = 66", "Harbor Florist"); n != 1 {
+		t.Fatal("new payee does not default to the transaction's category (Leisure: Hobbies)")
+	}
+}
+
+// Only a name that matches nothing can be created: a category whose parent does
+// not exist is an ordinary error, not a question.
+func TestManualTransactionCheckRejectsUncreatableCategory(t *testing.T) {
+	a := newDeleteTestApp(t, false)
+	rec := httptest.NewRecorder()
+	a.checkTransaction(rec, formRequest(newEntryForm("Amazon", "Nowhere: Thing")))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("check status = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusBadRequest)
+	}
+	rec = httptest.NewRecorder()
+	a.checkTransaction(rec, formRequest(newEntryForm("Amazon", "Leisure: Hobbies")))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("check of an existing payee and category = %d (%s), want %d", rec.Code, rec.Body.String(), http.StatusNoContent)
+	}
+}

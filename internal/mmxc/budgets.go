@@ -378,6 +378,8 @@ func (a *app) insertNextBudgetYear() (int, error) {
 	}
 	defer tx.Rollback()
 
+	// The new year follows the latest numeric one and starts as its copy. With
+	// none yet (every new database), it is the current calendar year, empty.
 	var sourceID int
 	var sourceName string
 	err = tx.QueryRow(`
@@ -386,17 +388,20 @@ SELECT BUDGETYEARID, BUDGETYEARNAME
  WHERE BUDGETYEARNAME GLOB '[0-9][0-9][0-9][0-9]'
  ORDER BY CAST(BUDGETYEARNAME AS INTEGER) DESC
  LIMIT 1`).Scan(&sourceID, &sourceName)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, errors.New("no previous numeric budget year found")
-	}
-	if err != nil {
+	var newName string
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		sourceID = 0
+		newName = strconv.Itoa(time.Now().Year())
+	case err != nil:
 		return 0, err
+	default:
+		sourceYear, err := strconv.Atoi(sourceName)
+		if err != nil {
+			return 0, err
+		}
+		newName = strconv.Itoa(sourceYear + 1)
 	}
-	sourceYear, err := strconv.Atoi(sourceName)
-	if err != nil {
-		return 0, err
-	}
-	newName := strconv.Itoa(sourceYear + 1)
 	var existing int
 	if err := tx.QueryRow("SELECT COUNT(*) FROM BUDGETYEAR_V1 WHERE BUDGETYEARNAME = ?", newName).Scan(&existing); err != nil {
 		return 0, err

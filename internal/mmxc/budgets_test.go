@@ -3,8 +3,10 @@ package mmxc
 import (
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestListBudgetEntriesIncludesCurrentAndPreviousTotals(t *testing.T) {
@@ -281,5 +283,47 @@ VALUES
 	tableIndex := strings.Index(body, `<table class="budget-table">`)
 	if headerIndex < 0 || createIndex < 0 || tableIndex < 0 || createIndex < headerIndex || createIndex > tableIndex {
 		t.Fatal("new budget category form is not below the budget header before the table")
+	}
+}
+
+// A database with no budget year yet (every new one) must still be able to
+// start budgeting: the first year is the current calendar year, empty, and the
+// next press continues from it as usual.
+func TestInsertNextBudgetYearStartsAtCurrentYearWhenNoneExists(t *testing.T) {
+	a, err := newApp(config{DBPath: fixtureDB(t), WriteEnabled: true, BackupDir: filepath.Join(t.TempDir(), "backups")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.db.Close()
+	if _, err := a.db.Exec("DELETE FROM BUDGETTABLE_V1; DELETE FROM BUDGETYEAR_V1;"); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := a.insertNextBudgetYear()
+	if err != nil {
+		t.Fatalf("first budget year on an empty database: %v", err)
+	}
+	thisYear := strconv.Itoa(time.Now().Year())
+	var name string
+	var entries int
+	if err := a.db.QueryRow("SELECT BUDGETYEARNAME FROM BUDGETYEAR_V1 WHERE BUDGETYEARID = ?", first).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.QueryRow("SELECT COUNT(*) FROM BUDGETTABLE_V1 WHERE BUDGETYEARID = ?", first).Scan(&entries); err != nil {
+		t.Fatal(err)
+	}
+	if name != thisYear || entries != 0 {
+		t.Fatalf("first budget year = %q with %d entries, want %q with none", name, entries, thisYear)
+	}
+
+	second, err := a.insertNextBudgetYear()
+	if err != nil {
+		t.Fatalf("second budget year: %v", err)
+	}
+	if err := a.db.QueryRow("SELECT BUDGETYEARNAME FROM BUDGETYEAR_V1 WHERE BUDGETYEARID = ?", second).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if want := strconv.Itoa(time.Now().Year() + 1); name != want {
+		t.Fatalf("second budget year = %q, want %q", name, want)
 	}
 }

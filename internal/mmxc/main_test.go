@@ -4921,3 +4921,61 @@ func TestReviewMonthTransactionsReadOnlyHasNoEditor(t *testing.T) {
 		}
 	}
 }
+
+// A pending candidate that resolves completely (existing payee and category, no
+// warnings, not a duplicate) arrives ticked; anything that still needs a look,
+// such as a payee the import would create, arrives unticked.
+func TestPendingCandidatesTickOnlyFullyResolvedRows(t *testing.T) {
+	a, err := newApp(config{
+		DBPath:       fixtureDB(t),
+		WriteEnabled: true,
+		BackupDir:    filepath.Join(t.TempDir(), "backups"),
+		StatementDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.db.Close()
+
+	cands := []importCandidate{
+		{Date: "2025-10-20", Type: "Withdrawal", Amount: 12.5, Payee: "Amazon", Category: "Leisure: Hobbies", Description: "AMAZON ORDER"},
+		{Date: "2025-10-21", Type: "Withdrawal", Amount: 7, Payee: "Corner Bakery", Category: "Leisure: Hobbies", Description: "CORNER BAKERY"},
+	}
+	if _, err := a.archiveStatement(12, true, "Oct.pdf", []byte("oct"), statementHeader{PeriodStart: "2025-10-01", PeriodEnd: "2025-10-31"}, cands, ""); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+
+	pending := a.derivePendingCandidates(12, "2025-10-01", "2025-10-31")
+	got := map[string]importCandidate{}
+	for _, c := range pending {
+		got[c.Description] = c
+	}
+	if c := got["AMAZON ORDER"]; !c.Selected {
+		t.Fatalf("fully resolved candidate not ticked: payee=%d category=%d warnings=%v errors=%v", c.PayeeID, c.CategoryID, c.Warnings, c.Errors)
+	}
+	if c := got["CORNER BAKERY"]; c.Selected {
+		t.Fatalf("candidate with an unknown payee was ticked: warnings=%v", c.Warnings)
+	}
+}
+
+func TestCandidateFullyResolved(t *testing.T) {
+	cases := []struct {
+		name string
+		c    importCandidate
+		want bool
+	}{
+		{"payee and category", importCandidate{Type: "Withdrawal", PayeeID: 14, CategoryID: 66}, true},
+		{"split", importCandidate{Type: "Withdrawal", PayeeID: 14, CategoryID: -1, Splits: []splitLine{{CategoryID: 66, Amount: 5}}}, true},
+		{"transfer", importCandidate{Type: "Transfer", ToAccountID: 13}, true},
+		{"transfer without account", importCandidate{Type: "Transfer"}, false},
+		{"no category", importCandidate{Type: "Withdrawal", PayeeID: 14}, false},
+		{"AI suggestion to confirm", importCandidate{Type: "Withdrawal", PayeeID: 14, CategoryID: 66, Warnings: []string{"Payee suggested by AI — confirm"}}, false},
+		{"duplicate", importCandidate{Type: "Withdrawal", PayeeID: 14, CategoryID: 66, Duplicate: true}, false},
+		{"error", importCandidate{Type: "Withdrawal", PayeeID: 14, CategoryID: 66, Errors: []string{"amount must be greater than zero"}}, false},
+	}
+	for _, tc := range cases {
+		if got := candidateFullyResolved(tc.c); got != tc.want {
+			t.Errorf("%s: fully resolved = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

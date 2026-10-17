@@ -94,6 +94,7 @@ function appConfirm(message, options) {
   }
   if (cancel) cancel.hidden = !!opts.alert;
   dialog.classList.toggle("is-alert", !!opts.alert);
+  dialog.classList.toggle("is-constructive", !!opts.constructive);
 
   return new Promise(function (resolve) {
     function done() {
@@ -878,6 +879,27 @@ function preflightSubmission(form) {
     headers: { "X-MMXC-Partial": "true" }
   }).then(function (response) {
     if (response.ok) return true;
+    // 409: the submission would create something new (a payee, a category).
+    // Ask, and on acceptance carry the confirmed names back as the fields the
+    // server named, so the real submission creates exactly what was shown.
+    if (response.status === 409) {
+      return response.json().then(function (answer) {
+        return appConfirm(answer.confirm, { ok: answer.ok, constructive: true }).then(function (accepted) {
+          if (!accepted) return false;
+          Object.keys(answer.set || {}).forEach(function (name) {
+            var field = form.querySelector('input[type="hidden"][name="' + name + '"]');
+            if (!field) {
+              field = document.createElement("input");
+              field.type = "hidden";
+              field.name = name;
+              form.appendChild(field);
+            }
+            field.value = answer.set[name];
+          });
+          return true;
+        });
+      });
+    }
     return response.text().then(function (text) {
       return appAlert(text.trim() || i18n("Could not validate this import. Please try again.")).then(function () {
         return false;

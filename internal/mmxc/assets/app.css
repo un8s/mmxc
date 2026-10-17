@@ -952,19 +952,47 @@ table {
   border-radius: 8px;
   box-shadow: 0 1px 2px var(--shadow-soft);
 }
-.candidate-table {
-	margin: 12px 0;
-}
+
 .candidate-toggle {
 	margin: 10px 0 0;
 	color: var(--muted);
 	font-size: 12px;
 	font-weight: 700;
 }
+/* Fixed layout: the compact columns get widths that fit their content, and
+   Payee and Category share the rest, since their text is the longest. Type and
+   Status stack in one cell to leave the text columns room at laptop widths. */
+.candidate-table {
+	margin: 12px 0;
+	table-layout: fixed;
+	width: 100%;
+	/* Below this the text columns would vanish: scroll inside .table-wrap. */
+	min-width: 52rem;
+}
+.candidate-table th,
+.candidate-table td {
+	padding-left: 6px;
+	padding-right: 6px;
+}
+.candidate-table th.c-import { width: 4.75rem; }
+.candidate-table th.c-date { width: 7.25rem; }
+.candidate-table th.c-type { width: 8rem; }
+.candidate-table th.c-amount { width: 6rem; }
+.candidate-table th.c-notes { width: 8rem; }
 .candidate-table input,
 .candidate-table select {
 	width: 100%;
-	min-width: 110px;
+	min-width: 0;
+	font-size: 14px;
+	padding: 5px 8px;
+}
+.candidate-table select {
+	padding-right: 4px;
+}
+.candidate-type-status {
+	display: grid;
+	gap: 6px;
+	align-content: start;
 }
 .candidate-table td:first-child input {
 	min-width: auto;
@@ -1415,8 +1443,9 @@ dialog::backdrop {
 }
 /* Both buttons submit the method="dialog" form, so both would otherwise pick up
    the accent primary fill. Cancel stays neutral and the affirmative button is
-   styled as destructive: every confirm in the app guards a delete, dismiss, or
-   void. Selectors carry an extra class to outrank button[type="submit"]. */
+   styled as destructive, since most confirms guard a delete, dismiss, or void;
+   .is-constructive below covers the ones that create something. Selectors
+   carry an extra class to outrank button[type="submit"]. */
 .app-dialog .app-dialog-actions [data-app-dialog-cancel] {
   background: var(--field-bg);
   border-color: var(--line-strong);
@@ -1431,6 +1460,17 @@ dialog::backdrop {
 }
 .app-dialog .app-dialog-actions [data-app-dialog-ok]:hover {
   background: var(--danger-soft);
+}
+/* A confirmation that creates something (a new payee) is not destructive
+   either: its button takes the ordinary primary style. */
+.app-dialog.is-constructive .app-dialog-actions [data-app-dialog-ok] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.app-dialog.is-constructive .app-dialog-actions [data-app-dialog-ok]:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 /* An alert has nothing to decline, so its single button is not destructive. */
 .app-dialog.is-alert .app-dialog-actions [data-app-dialog-ok] {

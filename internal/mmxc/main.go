@@ -474,6 +474,7 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("/accounts/update", a.handle((*app).updateAccount))
 	mux.HandleFunc("/transactions/create", a.handle((*app).createTransaction))
 	mux.HandleFunc("/transactions/update", a.handle((*app).updateTransaction))
+	mux.HandleFunc("/transactions/check", a.handle((*app).checkTransaction))
 	mux.HandleFunc("/transactions/void", a.handle((*app).voidTransaction))
 	mux.HandleFunc("/transactions/delete", a.handle((*app).deleteTransaction))
 	mux.HandleFunc("/review", a.handle((*app).monthlyReview))

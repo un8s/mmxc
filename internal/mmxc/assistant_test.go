@@ -660,3 +660,68 @@ func TestParseAssistantToolTranscriptRejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("parse transcript error = %v, want parse error", err)
 	}
 }
+
+// spending_summary with group_by "month" returns every month of the range,
+// empty ones as zero rows, and the months add up to the overall total.
+func TestAssistantSpendingSummaryGroupedByMonth(t *testing.T) {
+	a, err := newApp(config{DBPath: fixtureDB(t), BackupDir: "backups"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.db.Close()
+
+	result, _, totals, _, err := a.executeAssistantTool("How much did I spend each month?", "spending_summary",
+		json.RawMessage(`{"from":"2025-07-01","to":"2025-10-31","group_by":"month"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	months := assistantMonthsResult(result)
+	var got []string
+	count, withdrawals, deposits := 0, 0.0, 0.0
+	for _, m := range months {
+		got = append(got, m.Month)
+		count += m.Count
+		withdrawals += m.Withdrawals
+		deposits += m.Deposits
+	}
+	if strings.Join(got, ",") != "2025-07,2025-08,2025-09,2025-10" {
+		t.Fatalf("months = %v, want July through October 2025", got)
+	}
+	if months[2].Count != 0 || months[2].Withdrawals != 0 {
+		t.Fatalf("September has no transactions but got %+v", months[2])
+	}
+	if count != totals.Count || roundMoney(withdrawals) != roundMoney(totals.Withdrawals) || roundMoney(deposits) != roundMoney(totals.Deposits) {
+		t.Fatalf("months add up to count %d / out %.2f / in %.2f, total is %d / %.2f / %.2f", count, withdrawals, deposits, totals.Count, totals.Withdrawals, totals.Deposits)
+	}
+	if count == 0 {
+		t.Fatal("fixture range returned no transactions; the test would prove nothing")
+	}
+}
+
+func TestAssistantGroupByRejectsBadUse(t *testing.T) {
+	a, err := newApp(config{DBPath: fixtureDB(t), BackupDir: "backups"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.db.Close()
+	cases := map[string]struct{ tool, args string }{
+		"unknown grouping":    {"spending_summary", `{"from":"2025-07-01","to":"2025-10-31","group_by":"week"}`},
+		"other tool":          {"read_transactions", `{"from":"2025-07-01","to":"2025-10-31","group_by":"month"}`},
+		"no dates":            {"spending_summary", `{"group_by":"month"}`},
+		"more than 36 months": {"spending_summary", `{"from":"2020-01-01","to":"2025-12-31","group_by":"month"}`},
+		"from after to":       {"spending_summary", `{"from":"2025-10-01","to":"2025-07-31","group_by":"month"}`},
+	}
+	for name, tc := range cases {
+		if _, _, _, _, err := a.executeAssistantTool("q", tc.tool, json.RawMessage(tc.args)); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+	// Without group_by the result carries no months.
+	result, _, _, _, err := a.executeAssistantTool("q", "spending_summary", json.RawMessage(`{"from":"2025-07-01","to":"2025-10-31"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if months := assistantMonthsResult(result); months != nil {
+		t.Fatalf("ungrouped summary returned months %v", months)
+	}
+}

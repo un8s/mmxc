@@ -227,6 +227,15 @@ func (a *app) deletePayee(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/payees", http.StatusSeeOther)
 }
 
+// payeeNotFoundError is resolvePayeeID's "nothing matched" failure, kept
+// distinct from an ambiguous match so the transaction form can offer to create
+// the payee only when the name is genuinely new.
+type payeeNotFoundError struct{ text string }
+
+func (e *payeeNotFoundError) Error() string {
+	return fmt.Sprintf("payee %q was not found", e.text)
+}
+
 func (a *app) resolvePayeeID(text string) (int, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -278,7 +287,7 @@ SELECT PAYEEID,
 		return ids[0], nil
 	}
 	if len(ids) == 0 {
-		return 0, fmt.Errorf("payee %q was not found", text)
+		return 0, &payeeNotFoundError{text: text}
 	}
 	return 0, fmt.Errorf("payee %q matches multiple payees; choose one from the list", text)
 }
