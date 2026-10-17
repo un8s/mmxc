@@ -317,25 +317,25 @@ func (a *app) auditActor(r *http.Request) string {
 }
 
 // installAuditStore opens the audit store for cfg and replaces the current one,
-// closing the old handle. A failure disables auditing rather than stopping the
+// closing the old handle once unused. A failure disables auditing rather than stopping the
 // app — a read-only filesystem or a bad path should not make MMXC refuse to
 // start — and the reason is surfaced on Settings instead of being swallowed.
 func (a *app) installAuditStore(cfg config) {
-	old := a.audits
+	audits, status := openAuditState(cfg)
+	a.publish(func(s *runtimeState) { s.audits, s.auditStatus = audits, status })
+}
+
+// openAuditState opens the audit store for cfg, or returns why auditing is off.
+func openAuditState(cfg config) (*auditStore, string) {
 	store, err := openAuditStore(cfg)
 	switch {
 	case err == nil:
-		a.audits, a.auditStatus = store, ""
+		return store, ""
 	case errors.Is(err, errAuditDirUnset):
-		a.audits, a.auditStatus = nil, err.Error()
+		return nil, err.Error()
 	default:
-		a.audits, a.auditStatus = nil, err.Error()
 		log.Printf("audit log disabled: %v", err)
-	}
-	if old != nil && old != a.audits {
-		if err := old.Close(); err != nil {
-			log.Printf("close previous audit log: %v", err)
-		}
+		return nil, err.Error()
 	}
 }
 

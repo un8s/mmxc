@@ -152,13 +152,13 @@ func TestStartPagePath(t *testing.T) {
 	}
 	cfg := config{AppStartPage: "ask", LLMBaseURL: "http://127.0.0.1:11434/v1", LLMModel: "test-model"}
 	available := &app{config: cfg}
-	available.ai = aiStatus{
+	available.ai = &aiCache{status: aiStatus{
 		Configured:         true,
 		Available:          true,
 		AssistantAvailable: true,
 		CheckedAt:          time.Now(),
 		ConfigKey:          strings.Join([]string{cfg.LLMBaseURL, cfg.LLMModel, ""}, "\x00"),
-	}
+	}}
 	if got := available.startPagePath(); got != "/assistant" {
 		t.Fatalf("available AI start page = %q, want /assistant", got)
 	}

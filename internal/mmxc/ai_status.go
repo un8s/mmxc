@@ -5,8 +5,17 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
+
+// aiCache holds the latest availability check. It is shared by every request's
+// view of app, so it lives behind a pointer; nil (an app a test built by hand)
+// simply checks every time.
+type aiCache struct {
+	mu     sync.Mutex
+	status aiStatus
+}
 
 const (
 	aiStatusCacheTTL = 30 * time.Second
@@ -43,13 +52,14 @@ func (a *app) aiRuntimeStatus(refresh bool) aiStatus {
 		}
 	}
 
-	a.mu.Lock()
-	cached := a.ai
-	if !refresh && cached.ConfigKey == key && !cached.CheckedAt.IsZero() && time.Since(cached.CheckedAt) < aiStatusCacheTTL {
-		a.mu.Unlock()
-		return cached
+	if a.ai != nil {
+		a.ai.mu.Lock()
+		cached := a.ai.status
+		a.ai.mu.Unlock()
+		if !refresh && cached.ConfigKey == key && !cached.CheckedAt.IsZero() && time.Since(cached.CheckedAt) < aiStatusCacheTTL {
+			return cached
+		}
 	}
-	a.mu.Unlock()
 
 	models, err := a.llm.listModels(cfg.LLMBaseURL, aiStatusTimeout)
 	status := aiStatus{
@@ -92,9 +102,11 @@ func (a *app) aiRuntimeStatus(refresh bool) aiStatus {
 			status.Detail = fmt.Sprintf("LLM endpoint is reachable, but model %q is not served.", model)
 		}
 	}
-	a.mu.Lock()
-	a.ai = status
-	a.mu.Unlock()
+	if a.ai != nil {
+		a.ai.mu.Lock()
+		a.ai.status = status
+		a.ai.mu.Unlock()
+	}
 	return status
 }
 

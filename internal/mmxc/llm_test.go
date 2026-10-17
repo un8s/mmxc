@@ -149,7 +149,7 @@ func TestLLMListModelsScopesTheAPIKey(t *testing.T) {
 		_, _ = io.WriteString(w, `{"data":[{"id":"b"},{"id":"a"}]}`)
 	})
 
-	models, err := client.listModels(client.cfg.LLMBaseURL, time.Second)
+	models, err := client.listModels(client.cfg.Load().LLMBaseURL, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}

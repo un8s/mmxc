@@ -31,8 +31,10 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # -race: requests run concurrently against state Settings can replace
+      # (runtime.go); the race detector is what makes those tests meaningful.
       - name: go test
-        run: go test ./...
+        run: go test -race ./...
 
       # CGO_ENABLED=0 is how the release image is built; keep it compiling that way.
       - name: build

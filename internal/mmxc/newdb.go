@@ -342,7 +342,7 @@ func (a *app) createDatabaseFile(w http.ResponseWriter, r *http.Request) {
 		a.renderError(w, "Settings", "settings", err)
 		return
 	}
-	a.dbFiles = files
+	a.publish(func(s *runtimeState) { s.dbFiles = files })
 
 	if formBoolDefault(r, "open_now", false) {
 		next := a.config

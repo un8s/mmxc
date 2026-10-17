@@ -55,10 +55,7 @@ func (a *app) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if runtimeChanged {
 		a.installRuntimeDB(next, runtimeDB, runtimeCompat, runtimeCurrency)
 	} else {
-		a.config = next
-		if a.tr != nil {
-			a.tr.cfg = &a.config
-		}
+		a.publish(func(s *runtimeState) { s.config = next })
 	}
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }

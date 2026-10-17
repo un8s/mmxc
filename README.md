@@ -1,5 +1,7 @@
 # MMXC
 
+[![test](https://github.com/un8s/mmxc/actions/workflows/test.yml/badge.svg)](https://github.com/un8s/mmxc/actions/workflows/test.yml)
+
 A small, self-hosted personal-finance web app that reads and writes a
 [Money Manager Ex (MMEX)](https://github.com/moneymanagerex/moneymanagerex)
 `.mmb` SQLite database.
@@ -25,6 +27,19 @@ exist in your `.mmb`.
 > the assistant send statement contents or transaction data to whatever
 > `llm_base_url` points at. With a local Ollama box that never leaves your
 > network; with a hosted provider it does. The LLM features are optional.
+
+## Principles
+
+- **Compatibility first** — no new tables or columns; MMEX keeps working on the
+  same file.
+- **The model proposes, you decide** — every AI suggestion is reviewed before it
+  is written, and the assistant is read-only.
+- **Local first** — your data and statements stay on your machine; a local model
+  is a first-class setup.
+- **Small surface** — the monthly review and statement import come before broad
+  feature parity.
+
+The reasoning and trade-offs behind these are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Features
 
@@ -186,14 +201,27 @@ MMXC is a single-user app. If it is reachable beyond your own machine, enable
 the OIDC sign-in and/or put it behind a reverse proxy (see `mmxc.example.yaml`
 and docs/DOCKER.md).
 
+## How it's built
+
+One Go binary on the standard library, with two direct dependencies (a pure-Go
+SQLite driver and a YAML parser), server-rendered HTML and a single plain
+JavaScript file: no web framework, no cgo, no frontend build step. Writes go
+through a lock probe and a full backup; AI output is validated by code before
+anything is shown or stored; and model quality is measured with evals that
+reuse the app's own prompts and parser. The decisions and their costs are in
+**[docs/DESIGN.md](docs/DESIGN.md)**.
+
 ## Documentation
 
+- **[docs/DESIGN.md](docs/DESIGN.md)** — design decisions and trade-offs
 - **[docs/DOCKER.md](docs/DOCKER.md)** — container deployment
-- **[docs/i18n.md](docs/i18n.md)** — how UI translation works
 - **[docs/AI-assistant.md](docs/AI-assistant.md)** — design of the read-only
   assistant
+- **[docs/AI-prompts.md](docs/AI-prompts.md)** — tuning the Ask and statement
+  prompts for your model or bank
 - **[docs/AI-eval.md](docs/AI-eval.md)** — evals for comparing models on assistant
   tool-calling and statement extraction
+- **[docs/i18n.md](docs/i18n.md)** — how UI translation works
 - **[mmxc.example.yaml](mmxc.example.yaml)** — every setting, annotated
 
 ## License

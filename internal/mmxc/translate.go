@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,29 +38,32 @@ type cacheEntry struct {
 
 // translator caches LLM-generated UI translations per language. The cache is
 // persisted to disk as a JSON file (one per language) under TranslationDir.
-// A *config pointer is held so settings changes (model, timeout) are picked up
-// at call time without recreating the translator.
+// Its settings (model, cache directory) are read at call time through a config
+// pointer that is swapped as a whole (setConfig), never written through.
 type translator struct {
 	mu          sync.Mutex
 	caches      map[string]map[string]cacheEntry // lang → (key → entry)
 	stamps      map[string]cacheStamp            // lang → file version held in caches
 	checked     map[string]time.Time             // lang → when the file was last stat'ed
 	recheck     time.Duration
-	cfg         *config
+	cfg         atomic.Pointer[config]
 	llm         *llmClient
 	aiAvailable func() bool
 }
 
 func newTranslator(cfg *config, llm *llmClient) *translator {
-	return &translator{
+	t := &translator{
 		caches:  make(map[string]map[string]cacheEntry),
 		stamps:  make(map[string]cacheStamp),
 		checked: make(map[string]time.Time),
 		recheck: cacheRecheckInterval,
-		cfg:     cfg,
 		llm:     llm,
 	}
+	t.cfg.Store(cfg)
+	return t
 }
+
+func (t *translator) setConfig(cfg *config) { t.cfg.Store(cfg) }
 
 // get returns the translation of source into lang. It is cache-first: when AI
 // is not configured or reachable, cached translations are still used and cache
@@ -78,7 +82,7 @@ func (t *translator) get(lang, source, guidance string) string {
 	}
 	t.mu.Unlock()
 
-	model := strings.TrimSpace(t.cfg.TranslationModel)
+	model := strings.TrimSpace(t.cfg.Load().TranslationModel)
 	if model == "" || (t.aiAvailable != nil && !t.aiAvailable()) {
 		return source
 	}
@@ -158,7 +162,7 @@ func (t *translator) ensureCache(lang string) {
 }
 
 func (t *translator) cacheFile(lang string) string {
-	return filepath.Join(t.cfg.TranslationDir, lang+".json")
+	return filepath.Join(t.cfg.Load().TranslationDir, lang+".json")
 }
 
 // loadCacheFromDisk reads lang's cache file; ok is false when it could not be
@@ -182,7 +186,7 @@ func (t *translator) loadCacheFromDisk(lang string) (m map[string]cacheEntry, ok
 // concurrent reload never sees a half-written file, and returns the written
 // file's stamp.
 func (t *translator) saveCacheToDisk(lang string, cache map[string]cacheEntry) (cacheStamp, error) {
-	dir := t.cfg.TranslationDir
+	dir := t.cfg.Load().TranslationDir
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return cacheStamp{}, err
 	}
@@ -220,7 +224,7 @@ func (t *translator) saveCacheToDisk(lang string, cache map[string]cacheEntry) (
 // model to answer with alternatives, an explanation, or — for a one-word
 // source — a translation of the prompt instead of the string.
 func (t *translator) callTranslate(lang, source, guidance string) (string, error) {
-	model := strings.TrimSpace(t.cfg.TranslationModel)
+	model := strings.TrimSpace(t.cfg.Load().TranslationModel)
 	if model == "" {
 		return "", fmt.Errorf("translation model is not configured")
 	}

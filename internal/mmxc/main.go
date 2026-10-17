@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -38,10 +37,12 @@ type app struct {
 	audits      *auditStore
 	auditStatus string
 
-	currFmt currencyFormat // base currency display format, loaded at startup
+	currFmt currencyFormat // base currency display format
 
-	mu sync.Mutex // guards the AI status cache
-	ai aiStatus   // latest result of the short LLM availability check
+	// rt is the shared, replaceable runtime state (runtime.go). The fields
+	// above that mirror runtimeState are this request's copy of it.
+	rt *runtimeHolder
+	ai *aiCache // latest result of the short LLM availability check
 }
 
 // versionEntry is one row of the embedded git history shown in the version modal.
@@ -450,73 +451,78 @@ func Main() {
 	if err != nil {
 		log.Fatalf("start mmxc: %v", err)
 	}
-	defer a.db.Close()
-	defer func() { _ = a.audits.Close() }()
+	defer a.closeRuntime()
 	a.configPath = *configPath
-	a.dbFiles = dbFiles
+	a.publish(func(s *runtimeState) { s.dbFiles = dbFiles })
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", a.startPage)
-	mux.HandleFunc("/accounts", a.accounts)
-	mux.HandleFunc("/accounts/create", a.createAccount)
-	mux.HandleFunc("/accounts/update", a.updateAccount)
-	mux.HandleFunc("/transactions/create", a.createTransaction)
-	mux.HandleFunc("/transactions/update", a.updateTransaction)
-	mux.HandleFunc("/transactions/void", a.voidTransaction)
-	mux.HandleFunc("/transactions/delete", a.deleteTransaction)
-	mux.HandleFunc("/review", a.monthlyReview)
-	mux.HandleFunc("/review/extract", a.extractStatement)
-	mux.HandleFunc("/review/statements/attach", a.confirmStatementSections)
-	mux.HandleFunc("/review/import", a.reviewImport)
-	mux.HandleFunc("/review/import/commit", a.commitReviewImport)
-	mux.HandleFunc("/review/import/validate", a.validateReviewImport)
-	mux.HandleFunc("/review/candidate/dismiss", a.dismissReviewCandidate)
-	mux.HandleFunc("/review/statement", a.downloadStatement)
-	mux.HandleFunc("/review/statement/reassign", a.reassignStatement)
-	mux.HandleFunc("/review/statement/delete", a.deleteStatement)
-	mux.HandleFunc("/review/statement/document/delete", a.deleteSharedStatement)
-	mux.HandleFunc("/review/reviewed", a.markReviewed)
-	mux.HandleFunc("/review/rules/save", a.saveImportRuleHandler)
-	mux.HandleFunc("/review/rules/delete", a.deleteImportRuleHandler)
-	mux.HandleFunc("/budgets", a.budgets)
-	mux.HandleFunc("/budgets/create-year", a.createBudgetYear)
-	mux.HandleFunc("/budgets/create", a.createBudgetEntry)
-	mux.HandleFunc("/budgets/update", a.updateBudgetEntry)
-	mux.HandleFunc("/budgets/delete", a.deleteBudgetEntry)
-	mux.HandleFunc("/categories", a.categories)
-	mux.HandleFunc("/categories/create", a.createCategory)
-	mux.HandleFunc("/categories/update", a.updateCategory)
-	mux.HandleFunc("/categories/delete", a.deleteCategory)
-	mux.HandleFunc("/payees", a.payees)
-	mux.HandleFunc("/payees/create", a.createPayee)
-	mux.HandleFunc("/payees/update", a.updatePayee)
-	mux.HandleFunc("/payees/delete", a.deletePayee)
-	mux.HandleFunc("/assistant", a.assistant)
-	mux.HandleFunc("/assistant/ask", a.askAssistant)
-	mux.HandleFunc("/assistant/feedback", a.assistantFeedback)
-	mux.HandleFunc("/assistant/tools", a.askAssistantTools)
-	mux.HandleFunc("/reports", a.reports)
-	mux.HandleFunc("/audit", a.auditPage)
-	mux.HandleFunc("/settings", a.settings)
-	mux.HandleFunc("/settings/update", a.updateSettings)
-	mux.HandleFunc("/settings/database/create", a.createDatabaseFile)
-	mux.HandleFunc("/settings/database/convert", a.convertDatabaseFile)
-	mux.HandleFunc("/settings/llm-models", a.llmModels)
-	mux.HandleFunc("/settings/prompt", a.downloadBuiltinPrompt)
-	mux.HandleFunc("/static/app.css", a.css)
-	mux.HandleFunc("/static/theme.css", a.themeCSS)
-	mux.HandleFunc("/static/app.js", a.js)
-	mux.HandleFunc("/favicon.svg", a.favicon)
-	mux.HandleFunc("/auth/login", a.authLogin)
-	mux.HandleFunc("/auth/callback", a.authCallback)
-	mux.HandleFunc("/auth/logout", a.authLogout)
-
-	handler := a.requireAuth(mux) // pass-through when the gate is disabled
+	handler := a.routes()
 
 	log.Printf("MMXC listening on %s using %s", listenURL(cfg.HTTPAddr), cfg.DBPath)
 	if err := http.ListenAndServe(cfg.HTTPAddr, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// routes registers every page and action. Each handler runs through handle, on
+// its own view of the runtime state (runtime.go), behind the optional sign-in
+// gate.
+func (a *app) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", a.handle((*app).startPage))
+	mux.HandleFunc("/accounts", a.handle((*app).accounts))
+	mux.HandleFunc("/accounts/create", a.handle((*app).createAccount))
+	mux.HandleFunc("/accounts/update", a.handle((*app).updateAccount))
+	mux.HandleFunc("/transactions/create", a.handle((*app).createTransaction))
+	mux.HandleFunc("/transactions/update", a.handle((*app).updateTransaction))
+	mux.HandleFunc("/transactions/void", a.handle((*app).voidTransaction))
+	mux.HandleFunc("/transactions/delete", a.handle((*app).deleteTransaction))
+	mux.HandleFunc("/review", a.handle((*app).monthlyReview))
+	mux.HandleFunc("/review/extract", a.handle((*app).extractStatement))
+	mux.HandleFunc("/review/statements/attach", a.handle((*app).confirmStatementSections))
+	mux.HandleFunc("/review/import", a.handle((*app).reviewImport))
+	mux.HandleFunc("/review/import/commit", a.handle((*app).commitReviewImport))
+	mux.HandleFunc("/review/import/validate", a.handle((*app).validateReviewImport))
+	mux.HandleFunc("/review/candidate/dismiss", a.handle((*app).dismissReviewCandidate))
+	mux.HandleFunc("/review/statement", a.handle((*app).downloadStatement))
+	mux.HandleFunc("/review/statement/reassign", a.handle((*app).reassignStatement))
+	mux.HandleFunc("/review/statement/delete", a.handle((*app).deleteStatement))
+	mux.HandleFunc("/review/statement/document/delete", a.handle((*app).deleteSharedStatement))
+	mux.HandleFunc("/review/reviewed", a.handle((*app).markReviewed))
+	mux.HandleFunc("/review/rules/save", a.handle((*app).saveImportRuleHandler))
+	mux.HandleFunc("/review/rules/delete", a.handle((*app).deleteImportRuleHandler))
+	mux.HandleFunc("/budgets", a.handle((*app).budgets))
+	mux.HandleFunc("/budgets/create-year", a.handle((*app).createBudgetYear))
+	mux.HandleFunc("/budgets/create", a.handle((*app).createBudgetEntry))
+	mux.HandleFunc("/budgets/update", a.handle((*app).updateBudgetEntry))
+	mux.HandleFunc("/budgets/delete", a.handle((*app).deleteBudgetEntry))
+	mux.HandleFunc("/categories", a.handle((*app).categories))
+	mux.HandleFunc("/categories/create", a.handle((*app).createCategory))
+	mux.HandleFunc("/categories/update", a.handle((*app).updateCategory))
+	mux.HandleFunc("/categories/delete", a.handle((*app).deleteCategory))
+	mux.HandleFunc("/payees", a.handle((*app).payees))
+	mux.HandleFunc("/payees/create", a.handle((*app).createPayee))
+	mux.HandleFunc("/payees/update", a.handle((*app).updatePayee))
+	mux.HandleFunc("/payees/delete", a.handle((*app).deletePayee))
+	mux.HandleFunc("/assistant", a.handle((*app).assistant))
+	mux.HandleFunc("/assistant/ask", a.handle((*app).askAssistant))
+	mux.HandleFunc("/assistant/feedback", a.handle((*app).assistantFeedback))
+	mux.HandleFunc("/assistant/tools", a.handle((*app).askAssistantTools))
+	mux.HandleFunc("/reports", a.handle((*app).reports))
+	mux.HandleFunc("/audit", a.handle((*app).auditPage))
+	mux.HandleFunc("/settings", a.handle((*app).settings))
+	mux.HandleFunc("/settings/update", a.handle((*app).updateSettings))
+	mux.HandleFunc("/settings/database/create", a.handle((*app).createDatabaseFile))
+	mux.HandleFunc("/settings/database/convert", a.handle((*app).convertDatabaseFile))
+	mux.HandleFunc("/settings/llm-models", a.handle((*app).llmModels))
+	mux.HandleFunc("/settings/prompt", a.handle((*app).downloadBuiltinPrompt))
+	mux.HandleFunc("/static/app.css", a.handle((*app).css))
+	mux.HandleFunc("/static/theme.css", a.handle((*app).themeCSS))
+	mux.HandleFunc("/static/app.js", a.handle((*app).js))
+	mux.HandleFunc("/favicon.svg", a.handle((*app).favicon))
+	mux.HandleFunc("/auth/login", a.handle((*app).authLogin))
+	mux.HandleFunc("/auth/callback", a.handle((*app).authCallback))
+	mux.HandleFunc("/auth/logout", a.handle((*app).authLogout))
+	return a.requireAuth(mux) // pass-through when the gate is disabled
 }
 
 func newApp(cfg config) (*app, error) {
@@ -527,13 +533,14 @@ func newApp(cfg config) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &app{db: db, config: cfg, version: strings.TrimSpace(versionRaw), history: parseHistory(historyRaw), compat: compat, currFmt: currFmt}
+	a := &app{db: db, config: cfg, version: strings.TrimSpace(versionRaw), history: parseHistory(historyRaw), compat: compat, currFmt: currFmt, ai: &aiCache{}}
 	a.installAuditStore(cfg)
-	a.llm = newLLMClient(&a.config)
-	a.tr = newTranslator(&a.config, a.llm)
-	a.tr.aiAvailable = func() bool { return a.aiRuntimeStatus(false).Available }
+	initial := cfg
+	a.llm = newLLMClient(&initial)
+	a.tr = newTranslator(&initial, a.llm)
+	a.tr.aiAvailable = func() bool { return a.current().aiRuntimeStatus(false).Available }
 	tmpl, err := template.New("app").Funcs(template.FuncMap{
-		"money":     func(v float64) string { return formatMoney(v, a.currFmt) },
+		"money":     func(v float64) string { return formatMoney(v, a.currency()) },
 		"short":     short,
 		"payee":     payeeHTML,
 		"today":     formatDate,
@@ -576,6 +583,7 @@ func newApp(cfg config) (*app, error) {
 		}
 		a.auth = auth
 	}
+	a.startRuntime()
 	return a, nil
 }
 
@@ -742,23 +750,16 @@ func samePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
+// installRuntimeDB makes db the open database. The previous pool and audit
+// store close once no request still uses them (runtime.go).
 func (a *app) installRuntimeDB(cfg config, db *sql.DB, compat compatibilityReport, currFmt currencyFormat) {
-	old := a.db
-	a.db = db
-	a.config = cfg
-	a.compat = compat
-	a.currFmt = currFmt
 	// The audit store follows the database: switching files, or encrypting one,
 	// changes both its path and its key.
-	a.installAuditStore(cfg)
-	if a.tr != nil {
-		a.tr.cfg = &a.config
-	}
-	if old != nil && old != db {
-		if err := old.Close(); err != nil {
-			log.Printf("close previous database: %v", err)
-		}
-	}
+	audits, auditStatus := openAuditState(cfg)
+	a.publish(func(s *runtimeState) {
+		s.db, s.config, s.compat, s.currFmt = db, cfg, compat, currFmt
+		s.audits, s.auditStatus = audits, auditStatus
+	})
 }
 
 func (a *app) settings(w http.ResponseWriter, _ *http.Request) {

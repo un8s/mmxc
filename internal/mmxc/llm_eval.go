@@ -61,5 +61,5 @@ func (c *EvalLLMClient) Generate(model, prompt string, imagesBase64, mimeTypes [
 
 // ListModels reports the model ids the configured endpoint serves.
 func (c *EvalLLMClient) ListModels() ([]string, error) {
-	return c.inner.listModels(c.inner.cfg.LLMBaseURL, 10*time.Second)
+	return c.inner.listModels(c.inner.cfg.Load().LLMBaseURL, 10*time.Second)
 }

@@ -1,3 +1,7 @@
+2026-10-16	Add design notes and explain in the README how MMXC is built
+2026-10-16	Fix the data race when Settings replaces the database during requests
+2026-10-16	Drop the deprecated go-sqlite3/embed import that printed a startup notice
+2026-10-16	Update release
 2026-10-16	Describe what schema.sql is used for now that the schema monitor is gone
 2026-10-16	Link the source repository from Version History; style all text links alike
 2026-10-16	Update release
@@ -24,7 +28,3 @@
 2026-10-14	Let users override the Ask and statement prompt guidance with text files
 2026-10-13	Split public and internal docs and justfiles; add a general container guide
 2026-10-13	Reload a translation cache file when it is edited outside MMXC
-2026-10-12	Build the image with Go 1.26 to match go.mod
-2026-10-12	Let the Review candidates form create new Parent: Sub categories
-2026-10-12	Add a Learned Mappings modal to Review
-2026-10-12	Reset a review candidate's category when its payee is changed

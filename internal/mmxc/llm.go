@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,13 +43,21 @@ type llmOptions struct {
 
 func temperature(v float64) *float64 { return &v }
 
-// llmClient holds a *config so settings changes (endpoint, key, model, timeout)
-// are picked up at call time without recreating the client.
+// llmClient reads its settings (endpoint, key, timeout) at call time, so a
+// Settings change applies without recreating the client. The config pointer is
+// swapped as a whole (setConfig), never written through, because requests use
+// the client concurrently.
 type llmClient struct {
-	cfg *config
+	cfg atomic.Pointer[config]
 }
 
-func newLLMClient(cfg *config) *llmClient { return &llmClient{cfg: cfg} }
+func newLLMClient(cfg *config) *llmClient {
+	c := &llmClient{}
+	c.cfg.Store(cfg)
+	return c
+}
+
+func (c *llmClient) setConfig(cfg *config) { c.cfg.Store(cfg) }
 
 // errLLMEndpointInvalid marks a misconfigured endpoint, as opposed to a
 // reachable one that merely declined a request. AI status treats the two
@@ -149,14 +158,15 @@ func (c *llmClient) generate(model, prompt string, images []llmImage, opts llmOp
 
 // complete runs one non-streaming chat completion.
 func (c *llmClient) complete(model, prompt string, images []llmImage, opts llmOptions) (llmResult, error) {
-	base := llmBaseURL(c.cfg.LLMBaseURL)
+	cfg := c.cfg.Load()
+	base := llmBaseURL(cfg.LLMBaseURL)
 	if base == "" {
 		return llmResult{}, errors.New("LLM endpoint is not configured")
 	}
 	if strings.TrimSpace(model) == "" {
 		return llmResult{}, errors.New("LLM model is not configured")
 	}
-	payload, err := json.Marshal(buildLLMRequest(model, prompt, c.cfg.LLMReasoningEffort, images, opts))
+	payload, err := json.Marshal(buildLLMRequest(model, prompt, cfg.LLMReasoningEffort, images, opts))
 	if err != nil {
 		return llmResult{}, err
 	}
@@ -165,16 +175,16 @@ func (c *llmClient) complete(model, prompt string, images []llmImage, opts llmOp
 		return llmResult{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if key := strings.TrimSpace(c.cfg.LLMAPIKey); key != "" {
+	if key := strings.TrimSpace(cfg.LLMAPIKey); key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
-	timeout := c.cfg.LLMTimeout
+	timeout := cfg.LLMTimeout
 	if timeout <= 0 {
 		timeout = 4 * time.Minute
 	}
 	log.Printf("llm request: model=%s prompt=%dB images=%d json=%t timeout=%s",
 		model, len(prompt), len(images), opts.JSONMode, timeout)
-	if c.cfg.LogLLM {
+	if cfg.LogLLM {
 		log.Printf("llm prompt:\n%s", prompt)
 	}
 
@@ -209,7 +219,7 @@ func (c *llmClient) complete(model, prompt string, images []llmImage, opts llmOp
 	content := choice.Message.Content
 	log.Printf("llm response: ok elapsed=%s content=%dB reasoning=%dB finish_reason=%s prompt_tokens=%d",
 		elapsed, len(content), len(choice.Message.Reasoning), choice.FinishReason, out.Usage.PromptTokens)
-	if c.cfg.LogLLM {
+	if cfg.LogLLM {
 		log.Printf("llm raw response:\n%s", content)
 		if strings.TrimSpace(choice.Message.Reasoning) != "" {
 			log.Printf("llm raw reasoning:\n%s", choice.Message.Reasoning)
@@ -232,6 +242,7 @@ func (c *llmClient) complete(model, prompt string, images []llmImage, opts llmOp
 // than read from config because Settings queries the endpoint the user is
 // currently typing, before it has been saved.
 func (c *llmClient) listModels(rawURL string, timeout time.Duration) ([]string, error) {
+	cfg := c.cfg.Load()
 	base := llmBaseURL(rawURL)
 	if base == "" {
 		return nil, fmt.Errorf("%w: no base URL is configured", errLLMEndpointInvalid)
@@ -249,7 +260,7 @@ func (c *llmClient) listModels(rawURL string, timeout time.Duration) ([]string, 
 	// Only ever attach the key to the endpoint it belongs to: Settings passes a
 	// caller-supplied URL here, and sending the key to an arbitrary host would
 	// leak it.
-	if key := strings.TrimSpace(c.cfg.LLMAPIKey); key != "" && base == llmBaseURL(c.cfg.LLMBaseURL) {
+	if key := strings.TrimSpace(cfg.LLMAPIKey); key != "" && base == llmBaseURL(cfg.LLMBaseURL) {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	client := &http.Client{Timeout: timeout}
