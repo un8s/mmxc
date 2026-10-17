@@ -1,3 +1,6 @@
+2026-10-17	Give Ask answers with summary chips more width
+2026-10-17	Install Poppler in CI so the PDF extraction test can run
+2026-10-17	Update release
 2026-10-17	Show the app in the README with screenshots of invented data
 2026-10-17	Let Ask break spending down by month
 2026-10-17	Let the transaction form create a payee or subcategory after confirmation
@@ -25,6 +28,3 @@
 2026-10-16	Keep location hints and real payee names out of the public tree
 2026-10-16	Update release
 2026-10-16	Publish under a pinned anonymous identity; use the GitHub module path
-2026-10-16	Keep the busy overlay off the built-in prompt download
-2026-10-16	Give the audit log page full width and a Settings sidebar link
-2026-10-16	Answer read-only budget questions in Ask

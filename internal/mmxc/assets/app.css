@@ -419,6 +419,9 @@ button[type="submit"]:not(.icon-button):disabled {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: center;
+  /* The summary chips share this row, so the plain-message cap would leave
+     the text a narrow column; widen enough to keep ~75ch beside them. */
+  max-width: min(1180px, 100%);
 }
 .assistant-final-main {
   display: grid;

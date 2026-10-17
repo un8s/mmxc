@@ -31,6 +31,11 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # PDF statement extraction shells out to Poppler's pdftotext, as the
+      # release image does (Dockerfile); the PDF tests exercise the real binary.
+      - name: install poppler
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
+
       # -race: requests run concurrently against state Settings can replace
       # (runtime.go); the race detector is what makes those tests meaningful.
       - name: go test
