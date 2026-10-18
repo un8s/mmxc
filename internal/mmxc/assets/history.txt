@@ -1,3 +1,6 @@
+2026-10-18	Add a security policy
+2026-10-17	Document the GitHub Pages setup for the project site
+2026-10-17	Update release
 2026-10-17	Give Ask answers with summary chips more width
 2026-10-17	Install Poppler in CI so the PDF extraction test can run
 2026-10-17	Update release
@@ -25,6 +28,3 @@
 2026-10-16	Update release
 2026-10-16	Replace the remaining real place names in payee-matching tests and comments
 2026-10-16	Update release
-2026-10-16	Keep location hints and real payee names out of the public tree
-2026-10-16	Update release
-2026-10-16	Publish under a pinned anonymous identity; use the GitHub module path
