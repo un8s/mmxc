@@ -1,3 +1,5 @@
+2026-10-18	Disclose that the project is built with AI coding agents
+2026-10-18	Update release
 2026-10-18	Add a security policy
 2026-10-17	Document the GitHub Pages setup for the project site
 2026-10-17	Update release
@@ -25,6 +27,4 @@
 2026-10-16	Explain what database encryption protects and what it does not
 2026-10-16	Publish the image on ghcr.io and test every push in CI
 2026-10-16	Document the anonymity rules for commit subjects and fixtures
-2026-10-16	Update release
-2026-10-16	Replace the remaining real place names in payee-matching tests and comments
 2026-10-16	Update release

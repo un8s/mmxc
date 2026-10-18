@@ -221,6 +221,12 @@ anything is shown or stored; and model quality is measured with evals that
 reuse the app's own prompts and parser. The decisions and their costs are in
 **[docs/DESIGN.md](docs/DESIGN.md)**.
 
+**Built with AI coding agents.** Most of the code, tests and documentation were
+written by AI coding agents, working under the maintainer's direction. The
+maintainer set the design and the safety rules, reviewed the design-critical
+changes and decided what went in. Read the code and the warning above with that
+in mind.
+
 ## Documentation
 
 - **[docs/DESIGN.md](docs/DESIGN.md)** — design decisions and trade-offs
